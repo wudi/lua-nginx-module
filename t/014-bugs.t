@@ -9,7 +9,7 @@ log_level('debug');
 repeat_each(3);
 
 # NB: the shutdown_error_log block is independent from repeat times
-plan tests => repeat_each() * (blocks() * 2 + 33) + 1;
+plan tests => repeat_each() * (blocks() * 2 + 41);
 
 our $HtmlDir = html_dir;
 #warn $html_dir;
@@ -21,6 +21,8 @@ $ENV{TEST_NGINX_REDIS_PORT} ||= 6379;
 #no_long_string();
 
 $ENV{TEST_NGINX_MEMCACHED_PORT} ||= 11211;
+# Isolate keys from other files and concurrent runs of this file.
+$ENV{TEST_NGINX_MEMCACHED_PREFIX} = "lua_nginx_014_bugs_$$";
 $ENV{TEST_NGINX_RESOLVER} ||= '8.8.8.8';
 
 #no_shuffle();
@@ -100,26 +102,27 @@ GET /report/listBidwordPrices4lzExtra.htm?words=123,156,2532
         #set $memc_value 'hello';
         set $memc_value $arg_v;
         set $memc_cmd $arg_c;
-        set $memc_key $arg_k;
+        set $memc_key "$TEST_NGINX_MEMCACHED_PREFIX:3:$arg_k";
+        set $memc_exptime 600;
         #set $memc_value hello;
 
         memc_pass 127.0.0.1:$TEST_NGINX_MEMCACHED_PORT;
         #echo $memc_value;
     }
     location = /echo {
-        echo_location '/memc?c=get&k=foo';
-        echo_location '/memc?c=set&k=foo&v=hello';
-        echo_location '/memc?c=get&k=foo';
+        echo_location '/memc?c=get&k=014-bugs-3';
+        echo_location '/memc?c=set&k=014-bugs-3&v=hello';
+        echo_location '/memc?c=get&k=014-bugs-3';
     }
     location = /main {
         content_by_lua '
-            local res = ngx.location.capture("/memc?c=get&k=foo&v=")
+            local res = ngx.location.capture("/memc?c=get&k=014-bugs-3&v=")
             ngx.say("1: ", res.body)
 
-            res = ngx.location.capture("/memc?c=set&k=foo&v=bar");
+            res = ngx.location.capture("/memc?c=set&k=014-bugs-3&v=bar");
             ngx.say("2: ", res.body);
 
-            res = ngx.location.capture("/memc?c=get&k=foo")
+            res = ngx.location.capture("/memc?c=get&k=014-bugs-3")
             ngx.say("3: ", res.body);
         ';
     }
@@ -201,7 +204,7 @@ https://datatracker.ietf.org/doc/html/rfc7540#section-8.1.2
    header field names MUST be converted to lowercase prior to their
    encoding in HTTP/2.  A request or response containing uppercase
    header field names MUST be treated as malformed
-
+--- no_http2
 --- config
     location /sub {
         content_by_lua '
@@ -828,7 +831,7 @@ qr/curl: \(28\) Operation timed out after \d+ milliseconds with 0 bytes received
         rewrite    ^/myproxy/(.*)  /$1  break;
         resolver_timeout 3s;
         #resolver 172.16.0.23; #  AWS DNS resolver address is the same in all regions - 172.16.0.23
-        resolver 8.8.8.8;
+        resolver $TEST_NGINX_RESOLVER;
         proxy_read_timeout 1s;
         proxy_send_timeout 1s;
         proxy_connect_timeout 1s;
@@ -872,19 +875,29 @@ ok
 
 === TEST 37: resolving names with a trailing dot
 --- http_config eval
-    "lua_package_path '$::HtmlDir/?.lua;./?.lua;;';"
+    "lua_package_path '$::HtmlDir/?.lua;./?.lua;;';
+    server {
+        listen 127.0.0.1:\$TEST_NGINX_RAND_PORT_1;
+
+        location = /t {
+            echo 'resolved trailing dot';
+        }
+    }
+"
 --- config
     location /t {
         resolver $TEST_NGINX_RESOLVER ipv6=off;
-        set $myhost 'agentzh.org.';
-        proxy_pass http://$myhost/misc/.vimrc;
+        set $myhost 'trailing-dot.test.';
+        proxy_pass http://$myhost:$TEST_NGINX_RAND_PORT_1/t;
     }
 --- request
 GET /t
---- response_body_like: An example for a vimrc file
+--- response_body
+resolved trailing dot
 --- no_error_log
 [error]
 --- timeout: 10
+--- skip_eval: 3:$ENV{TEST_NGINX_USE_HTTP3}
 
 
 
@@ -892,7 +905,7 @@ GET /t
 --- http_config eval
     "lua_package_path '$::HtmlDir/?.lua;./?.lua;;';
     server {
-        listen 12354;
+        listen \$TEST_NGINX_RAND_PORT_1;
 
         location = /t {
             echo 'args: \$args';
@@ -902,7 +915,7 @@ GET /t
 --- config
     location = /t {
         set $args "foo=1&bar=2";
-        proxy_pass http://127.0.0.1:12354;
+        proxy_pass http://127.0.0.1:$TEST_NGINX_RAND_PORT_1;
     }
 
 --- request
@@ -1268,14 +1281,16 @@ qr/\[emerg\] \d+#\d+: unexpected "A" in/
 
 
 === TEST 47: cosocket does not exit on worker_shutdown_timeout
+This test must enable master process
+--- SKIP
 --- main_config
 worker_shutdown_timeout 1;
 --- config
 location /t {
     content_by_lua_block {
-        local function thread_func()
+        local function thread_func(port)
             local sock = ngx.socket.tcp()
-            local ok, err = sock:connect("127.0.0.1", 65110)
+            local ok, err = sock:connect("127.0.0.1", port)
             local bytes, err = sock:send("hello")
             if bytes ~= 5 then
                 sock:close()
@@ -1292,11 +1307,11 @@ location /t {
             ngx.log(ngx.ERR, "successfully read a line: ", line)
         end
 
-        local function timer_func()
-            ngx.thread.spawn(thread_func)
+        local function timer_func(port)
+            ngx.thread.spawn(thread_func, port)
         end
 
-        ngx.timer.at(1, timer_func)
+        ngx.timer.at(1, timer_func, ngx.var.server_port)
         ngx.say("Hello world")
     }
 }
@@ -1305,7 +1320,15 @@ location /t {
 --- response_body
 Hello world
 --- shutdown_error_log eval
-qr|failed to read a line: closed|
+my $expr;
+
+if ($ENV{TEST_NGINX_USE_HTTP3}) {
+    $expr = qr|lua close the global Lua VM|
+} else {
+    $expr = qr/failed to read a line: closed|attempt to send data on a closed socket/
+}
+
+$expr;
 --- timeout: 1.2
 
 
@@ -1356,3 +1379,91 @@ If-Match: 1
 --- error_code: 412
 --- response_body eval
 qr/\Ahello\z/
+
+
+
+=== TEST 50: nginx crashes when encountering an illegal http if header
+crash with ngx.print()
+--- main_config
+--- config
+error_page 412 /my_error_handler_412;
+
+location /t {
+    access_by_lua_block {
+        local ngx_resp = require "ngx.resp"
+        ngx_resp.bypass_if_checks()
+        ngx.print("hello")
+        ngx.exit(200)
+    }
+}
+location = /my_error_handler_412 {
+    content_by_lua_block {
+        ngx.sleep(0.002)
+        ngx.header["Content-Type"] = "text/plain"
+    }
+}
+--- request
+    GET /t
+--- more_headers
+If-Match: 1
+--- error_code: 200
+--- response_body eval
+qr/\Ahello\z/
+
+
+
+=== TEST 51: subrequest cycle problem in rewrite_by_lua_file
+--- http_config
+    lua_code_cache off;
+--- config
+    set $main "foo";
+    set $sub "bar";
+    location = /main {
+        rewrite_by_lua_file html/main.lua;
+        echo $main;
+    }
+
+    location = /sub {
+        rewrite_by_lua_file html/sub.lua;
+        echo $sub;
+    }
+--- user_files
+>>> main.lua
+local res = ngx.location.capture("/sub")
+ngx.var.main = "main " .. res.body
+>>> sub.lua
+ngx.var.sub = "sub"
+
+--- pipelined_requests eval
+["GET /sub", "GET /main"]
+--- response_body eval
+["sub\n", "main sub\n\n"]
+--- no_error_log
+[error]
+
+
+
+=== TEST 52: subrequest cycle problem in content_by_lua_file
+--- http_config
+    lua_code_cache off;
+--- config
+    location = /main {
+        content_by_lua_file html/main.lua;
+    }
+
+    location = /sub {
+        content_by_lua_file html/sub.lua;
+    }
+--- user_files
+>>> main.lua
+local res = ngx.location.capture("/sub")
+ngx.print("main " .. res.body)
+>>> sub.lua
+ngx.print("sub")
+
+--- pipelined_requests eval
+["GET /sub", "GET /main"]
+--- response_body eval
+["sub", "main sub"]
+--- no_error_log
+[error]

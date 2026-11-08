@@ -1,10 +1,26 @@
 # vim:set ft= ts=4 sw=4 et fdm=marker:
 
-use Test::Nginx::Socket 'no_plan';
+
+BEGIN {
+    # Injected initialization and per-line GC change the cache/ordering or
+    # performance contract asserted here. Keep ASan, use the normal GC policy.
+    delete $ENV{TEST_NGINX_INIT_BY_LUA} if $ENV{TEST_NGINX_GC_STRESS};
+}
+
+use Test::Nginx::Socket;
 use Test::Nginx::Socket::Lua::Stream;
 
 log_level('warn');
 repeat_each(2);
+
+if (defined $ENV{TEST_NGINX_USE_HTTP3}) {
+    plan(skip_all => "HTTP3 does not support client abort");
+} elsif (defined $ENV{TEST_NGINX_USE_HTTP2}) {
+    plan(skip_all => "HTTP2 does not support client abort");
+} else {
+    plan tests => repeat_each() * (blocks() * 2);
+}
+
 run_tests();
 
 __DATA__

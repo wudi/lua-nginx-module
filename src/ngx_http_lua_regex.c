@@ -9,7 +9,7 @@
 #endif
 #include "ddebug.h"
 
-#if (NGX_PCRE || NGX_PCRE2)
+#if (NGX_PCRE)
 
 #include "ngx_http_lua_pcrefix.h"
 #include "ngx_http_lua_script.h"
@@ -316,7 +316,7 @@ failed:
 
     rc->err.len = ngx_snprintf(rc->err.data, rc->err.len, p, &rc->pattern, n)
                   - rc->err.data;
-    return NGX_OK;
+    return NGX_ERROR;
 }
 #endif
 
@@ -325,7 +325,7 @@ ngx_int_t
 ngx_http_lua_ffi_set_jit_stack_size(int size, u_char *errstr,
     size_t *errstr_size)
 {
-#if (NGX_PCRE2 || LUA_HAVE_PCRE_JIT)
+#if (LUA_HAVE_PCRE_JIT)
 
     ngx_http_lua_main_conf_t    *lmcf;
     ngx_pool_t                  *pool, *old_pool;
@@ -501,6 +501,11 @@ ngx_http_lua_regex_cleanup(void *data)
 
     if (ngx_regex_compile_context) {
         old_pool = ngx_http_lua_pcre_malloc_init(NULL);
+        if (ngx_regex_match_context != NULL) {
+            pcre2_match_context_free(ngx_regex_match_context);
+            ngx_regex_match_context = NULL;
+        }
+
         pcre2_compile_context_free(ngx_regex_compile_context);
         ngx_regex_compile_context = NULL;
         ngx_http_lua_pcre_malloc_done(old_pool);
@@ -591,7 +596,11 @@ ngx_http_lua_ffi_compile_regex(const unsigned char *pat, size_t pat_len,
         re_comp.captures = 0;
 
     } else {
+#if (NGX_PCRE2)
+        ovecsize = (re_comp.captures + 1) * 2;
+#else
         ovecsize = (re_comp.captures + 1) * 3;
+#endif
     }
 
     dd("allocating cap with size: %d", (int) ovecsize);
@@ -684,21 +693,21 @@ ngx_http_lua_ffi_exec_regex(ngx_http_lua_regex_t *re, int flags,
 {
     int          rc, exec_opts = 0;
     size_t      *ov;
-    ngx_uint_t   ovecsize, n, i;
+    ngx_uint_t   ovecpair, n, i;
     ngx_pool_t  *old_pool;
 
     if (flags & NGX_LUA_RE_MODE_DFA) {
-        ovecsize = 2;
+        ovecpair = 1;
         re->ncaptures = 0;
 
     } else {
-        ovecsize = (re->ncaptures + 1) * 3;
+        ovecpair = re->ncaptures + 1;
     }
 
     old_pool = ngx_http_lua_pcre_malloc_init(NULL);
 
     if (ngx_regex_match_data == NULL
-        || ovecsize > ngx_regex_match_data_size)
+        || ovecpair > ngx_regex_match_data_size)
     {
         /*
          * Allocate a match data if not yet allocated or smaller than
@@ -709,8 +718,8 @@ ngx_http_lua_ffi_exec_regex(ngx_http_lua_regex_t *re, int flags,
             pcre2_match_data_free(ngx_regex_match_data);
         }
 
-        ngx_regex_match_data_size = ovecsize;
-        ngx_regex_match_data = pcre2_match_data_create(ovecsize / 3, NULL);
+        ngx_regex_match_data_size = ovecpair;
+        ngx_regex_match_data = pcre2_match_data_create(ovecpair, NULL);
 
         if (ngx_regex_match_data == NULL) {
             rc = PCRE2_ERROR_NOMEMORY;
@@ -741,7 +750,7 @@ ngx_http_lua_ffi_exec_regex(ngx_http_lua_regex_t *re, int flags,
 #if (NGX_DEBUG)
         ngx_log_debug4(NGX_LOG_DEBUG_HTTP, ngx_cycle->log, 0,
                        "pcre2_match failed: flags 0x%05Xd, options 0x%08Xd, "
-                       "rc %d, ovecsize %ui", flags, exec_opts, rc, ovecsize);
+                       "rc %d, ovecpair %ui", flags, exec_opts, rc, ovecpair);
 #endif
 
         goto failed;
@@ -753,11 +762,11 @@ ngx_http_lua_ffi_exec_regex(ngx_http_lua_regex_t *re, int flags,
 #if (NGX_DEBUG)
     ngx_log_debug5(NGX_LOG_DEBUG_HTTP, ngx_cycle->log, 0,
                    "pcre2_match: flags 0x%05Xd, options 0x%08Xd, rc %d, "
-                   "n %ui, ovecsize %ui", flags, exec_opts, rc, n, ovecsize);
+                   "n %ui, ovecpair %ui", flags, exec_opts, rc, n, ovecpair);
 #endif
 
-    if (!(flags & NGX_LUA_RE_MODE_DFA) && n > ovecsize / 3) {
-        n = ovecsize / 3;
+    if (n > ovecpair) {
+        n = ovecpair;
     }
 
     for (i = 0; i < n; i++) {
@@ -977,7 +986,7 @@ ngx_http_lua_ffi_pcre_version(void)
 }
 
 
-#endif /* NGX_PCRE || NGX_PCRE2 */
+#endif /* NGX_PCRE */
 
 
 /* vi:set ft=c ts=4 sw=4 et fdm=marker: */

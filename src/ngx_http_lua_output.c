@@ -65,6 +65,7 @@ ngx_http_lua_ngx_echo(lua_State *L, unsigned newline)
     ngx_http_lua_check_context(L, ctx, NGX_HTTP_LUA_CONTEXT_REWRITE
                                | NGX_HTTP_LUA_CONTEXT_SERVER_REWRITE
                                | NGX_HTTP_LUA_CONTEXT_ACCESS
+                               | NGX_HTTP_LUA_CONTEXT_PRECONTENT
                                | NGX_HTTP_LUA_CONTEXT_CONTENT);
 
     if (ctx->acquired_raw_req_socket) {
@@ -502,6 +503,7 @@ ngx_http_lua_ngx_flush(lua_State *L)
     ngx_http_lua_check_context(L, ctx, NGX_HTTP_LUA_CONTEXT_REWRITE
                                | NGX_HTTP_LUA_CONTEXT_SERVER_REWRITE
                                | NGX_HTTP_LUA_CONTEXT_ACCESS
+                               | NGX_HTTP_LUA_CONTEXT_PRECONTENT
                                | NGX_HTTP_LUA_CONTEXT_CONTENT);
 
     if (ctx->acquired_raw_req_socket) {
@@ -546,7 +548,7 @@ ngx_http_lua_ngx_flush(lua_State *L)
     }
 #endif
 
-    cl = ngx_http_lua_get_flush_chain(r, ctx);
+    cl = ngx_http_lua_get_flush_chain(r);
     if (cl == NULL) {
         return luaL_error(L, "no memory");
     }
@@ -657,6 +659,7 @@ ngx_http_lua_ngx_eof(lua_State *L)
     ngx_http_lua_check_context(L, ctx, NGX_HTTP_LUA_CONTEXT_REWRITE
                                | NGX_HTTP_LUA_CONTEXT_SERVER_REWRITE
                                | NGX_HTTP_LUA_CONTEXT_ACCESS
+                               | NGX_HTTP_LUA_CONTEXT_PRECONTENT
                                | NGX_HTTP_LUA_CONTEXT_CONTENT);
 
     ngx_log_debug0(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
@@ -720,18 +723,17 @@ ngx_http_lua_ngx_send_headers(lua_State *L)
     ngx_http_lua_check_context(L, ctx, NGX_HTTP_LUA_CONTEXT_REWRITE
                                | NGX_HTTP_LUA_CONTEXT_SERVER_REWRITE
                                | NGX_HTTP_LUA_CONTEXT_ACCESS
+                               | NGX_HTTP_LUA_CONTEXT_PRECONTENT
                                | NGX_HTTP_LUA_CONTEXT_CONTENT);
 
-    if (!r->header_sent && !ctx->header_sent) {
-        ngx_log_debug0(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
-                       "lua send headers");
+    ngx_log_debug0(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
+                   "lua send headers");
 
-        rc = ngx_http_lua_send_header_if_needed(r, ctx);
-        if (rc == NGX_ERROR || rc > NGX_OK) {
-            lua_pushnil(L);
-            lua_pushliteral(L, "nginx output filter error");
-            return 2;
-        }
+    rc = ngx_http_lua_send_header_if_needed(r, ctx);
+    if (rc == NGX_ERROR || rc > NGX_OK) {
+        lua_pushnil(L);
+        lua_pushliteral(L, "nginx output filter error");
+        return 2;
     }
 
     lua_pushinteger(L, 1);

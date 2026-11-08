@@ -70,7 +70,7 @@ ngx_http_lua_ngx_req_set_uri(lua_State *L)
         buf_len = ngx_http_lua_escape_log(NULL, p, len) + 1;
         buf = ngx_palloc(r->pool, buf_len);
         if (buf == NULL) {
-            return NGX_ERROR;
+            return luaL_error(L, "no memory");
         }
 
         ngx_http_lua_escape_log(buf, p, len);
@@ -92,10 +92,12 @@ ngx_http_lua_ngx_req_set_uri(lua_State *L)
                 return luaL_error(L, "no ctx found");
             }
 
-            dd("server_rewrite: %d, rewrite: %d, access: %d, content: %d",
+            dd("server_rewrite: %d, rewrite: %d, access: %d, "
+               "precontent: %d, content: %d",
                (int) ctx->entered_server_rewrite_phase,
                (int) ctx->entered_rewrite_phase,
                (int) ctx->entered_access_phase,
+               (int) ctx->entered_precontent_phase,
                (int) ctx->entered_content_phase);
 
             ngx_http_lua_check_context(L, ctx, NGX_HTTP_LUA_CONTEXT_REWRITE

@@ -212,8 +212,8 @@ attempt to send data on a closed socket:
     location /t {
         rewrite_by_lua '
             local sock = ngx.socket.tcp()
-            local port = 80
-            local ok, err = sock:connect("agentzh.org", port)
+            local port = $TEST_NGINX_SERVER_PORT
+            local ok, err = sock:connect("localhost", port)
             if not ok then
                 ngx.say("failed to connect: ", err)
                 return
@@ -221,7 +221,7 @@ attempt to send data on a closed socket:
 
             ngx.say("connected: ", ok)
 
-            local req = "GET / HTTP/1.0\\r\\nHost: agentzh.org\\r\\nConnection: close\\r\\n\\r\\n"
+            local req = "GET /foo HTTP/1.0\\r\\nHost: localhost\\r\\nConnection: close\\r\\n\\r\\n"
             -- req = "OK"
 
             local bytes, err = sock:send(req)
@@ -251,13 +251,17 @@ attempt to send data on a closed socket:
 
         content_by_lua return;
     }
+    location /foo {
+        content_by_lua 'ngx.say("foo")';
+        more_clear_headers Date;
+    }
 --- request
 GET /t
---- response_body_like
+--- response_body
 connected: 1
-request sent: 56
-first line received: HTTP\/1\.1 200 OK
-second line received: (?:Date|Server): .*?
+request sent: 57
+first line received: HTTP/1.1 200 OK
+second line received: Server: nginx
 --- no_error_log
 [error]
 
@@ -332,7 +336,7 @@ send: nil closed
 receive: nil closed
 close: nil closed
 --- error_log
-lua tcp socket connect timed out, when connecting to 127.0.0.2:12345
+lua tcp socket connect timed out, upstream: 127.0.0.2:12345(127.0.0.2)
 --- timeout: 10
 
 
@@ -1126,7 +1130,7 @@ function go(port)
         ngx.say("connected: ", ok)
     end
 
-    local req = "flush_all\r\n"
+    local req = "get __nil\r\n"
 
     local bytes, err = sock:send(req)
     if not bytes then
@@ -1148,7 +1152,7 @@ GET /t
 --- response_body_like eval
 "^(?:connected: 1
 request sent: 11
-received: OK|failed to send request: closed)\$"
+received: END|failed to send request: closed)\$"
 
 
 
@@ -1197,7 +1201,7 @@ function go(port)
         return
     end
 
-    local req = "flush_all\r\n"
+    local req = "get __nil\r\n"
 
     local bytes, err = sock:send(req)
     if not bytes then
@@ -1219,7 +1223,7 @@ GET /t
 --- response_body_like eval
 qr/^(?:connected: 1
 request sent: 11
-received: OK|failed to receive a line: closed \[nil\])$/
+received: END|failed to receive a line: closed \[nil\])$/
 
 
 
@@ -1268,7 +1272,7 @@ function go(port)
         return
     end
 
-    local req = "flush_all\r\n"
+    local req = "get __nil\r\n"
 
     local bytes, err = sock:send(req)
     if not bytes then
@@ -1290,7 +1294,7 @@ GET /t
 --- response_body_like eval
 qr/^(?:connected: 1
 request sent: 11
-received: OK|failed to close: closed)$/
+received: END|failed to close: closed)$/
 
 
 
@@ -1340,7 +1344,7 @@ function go(port)
         ngx.say("connected again: ", ok)
     end
 
-    local req = "flush_all\r\n"
+    local req = "get __nil\r\n"
 
     local bytes, err = sock:send(req)
     if not bytes then
@@ -1362,7 +1366,7 @@ GET /t
 --- response_body_like eval
 qr/^(?:connected(?: again)?: 1
 request sent: 11
-received: OK
+received: END
 ){2}$/
 --- error_log
 lua reuse socket upstream ctx
@@ -1399,7 +1403,7 @@ lua reuse socket upstream ctx
 
             ngx.say("connected again: ", ok)
 
-            local req = "flush_all\\r\\n"
+            local req = "get __nil\\r\\n"
 
             local bytes, err = sock:send(req)
             if not bytes then
@@ -1433,7 +1437,7 @@ GET /t
 connected: 1
 connected again: 1
 request sent: 11
-received: OK
+received: END
 close: 1 nil
 --- no_error_log
 [error]
@@ -1473,7 +1477,7 @@ close: 1 nil
 
             ngx.say("2: connected: ", ok)
 
-            local req1 = "flush_all\\r\\n"
+            local req1 = "get __nil\\r\\n"
             local bytes, err = sock1:send(req1)
             if not bytes then
                 ngx.say("1: failed to send request: ", err)
@@ -1526,7 +1530,7 @@ GET /t
 2: connected: 1
 1: request sent: 11
 2: request sent: 57
-1: received: OK
+1: received: END
 2: received: HTTP/1.1 200 OK
 1: close: 1 nil
 2: close: 1 nil
@@ -1667,8 +1671,8 @@ GET /t
 --- ignore_response
 --- error_log
 bad argument #1 to 'send' (bad data type nil found)
---- curl_error
-curl: (52) Empty reply from server
+--- curl_error eval
+qr#curl: \(52\) Empty reply from server|curl: \(95\) HTTP/3 stream 0 reset by server#
 --- no_http2
 
 
@@ -1731,8 +1735,8 @@ GET /t
 --- ignore_response
 --- error_log
 bad argument #1 to 'send' (bad data type boolean found)
---- curl_error
-curl: (52) Empty reply from server
+--- curl_error eval
+qr#curl: \(52\) Empty reply from server|curl: \(95\) HTTP/3 stream 0 reset by server#
 --- no_http2
 
 
@@ -1795,8 +1799,8 @@ GET /t
 --- ignore_response
 --- error_log
 bad argument #1 to 'send' (bad data type userdata found)
---- curl_error
-curl: (52) Empty reply from server
+--- curl_error eval
+qr#curl: \(52\) Empty reply from server|curl: \(95\) HTTP/3 stream 0 reset by server#
 --- no_http2
 
 
@@ -1820,7 +1824,7 @@ curl: (52) Empty reply from server
 
             ngx.say("connected: ", ok)
 
-            local req = "flush_all\\r\\n"
+            local req = "get __nil\\r\\n"
 
             local bytes, err = sock:send(req)
             if not bytes then
@@ -1853,7 +1857,8 @@ curl: (52) Empty reply from server
     }
 
     location /memc {
-        set $memc_cmd flush_all;
+        set $memc_cmd get;
+        set $memc_key __nil;
         memc_pass 127.0.0.1:$TEST_NGINX_MEMCACHED_PORT;
     }
 --- request
@@ -1861,10 +1866,9 @@ GET /t
 --- response_body eval
 "connected: 1
 request sent: 11
-received: OK
+received: END
 close: 1 nil
-subrequest: 200, OK\r
-"
+subrequest: 404, "
 --- no_error_log
 [error]
 --- no_http2

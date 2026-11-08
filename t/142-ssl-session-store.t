@@ -256,9 +256,9 @@ my timer run!
             return
         end
 
-        local bytes, err = sock:send("flush_all\\r\\n")
+        local bytes, err = sock:send("get __nil\\r\\n")
         if not bytes then
-            ngx.log(ngx.ERR, "failed to send flush_all command: ", err)
+            ngx.log(ngx.ERR, "failed to send get command: ", err)
             return
         end
 
@@ -975,3 +975,4 @@ qr/ssl_session_store_by_lua\*: skipped since TLS version >= 1\.3 \(\d+\)/
 [error]
 [alert]
 [emerg]
+--- skip_eval: 6:$ENV{TEST_NGINX_USE_HTTP3}

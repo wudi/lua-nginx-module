@@ -38,7 +38,7 @@ __DATA__
 
             ngx.say("connected: ", ok)
 
-            local req = "flush_all\\r\\nget foo\\r\\nget bar\\r\\n"
+            local req = "version\\r\\nget __nil\\r\\nget __nil\\r\\n"
             -- req = "OK"
             local send_idx = 1
 
@@ -82,12 +82,12 @@ __DATA__
 
 --- request
 GET /t
---- response_body
-connected: 1
-received: OK
+--- response_body_like
+^connected: 1
+received: VERSION [^\r\n]+
 received: END
 received: END
-setkeepalive: 1 nil
+setkeepalive: 1 nil$
 
 --- no_error_log
 [error]
@@ -113,7 +113,7 @@ setkeepalive: 1 nil
 
             ngx.say("connected: ", ok)
 
-            local req = "flush_all\\r\\n"
+            local req = "get __nil\\r\\n"
             -- req = "OK"
             local send_idx = 1
 
@@ -177,7 +177,7 @@ setkeepalive: 1 nil
 GET /t
 --- response_body_like chop
 ^connected: 1
-(?:received: OK|failed to send request: timeout
+(?:received: END|failed to send request: timeout
 partial read: )
 read timed out: [1-9]\d*
 close: 1 nil$
@@ -193,7 +193,7 @@ close: 1 nil$
     lua_socket_log_errors off;
     location /t {
         #set $port 5000;
-        set $port 7658;
+        set $port $TEST_NGINX_RAND_PORT_1;
 
         content_by_lua '
             local sock = ngx.socket.tcp()
@@ -258,7 +258,7 @@ received: OK!
 close: (?:nil socket busy writing|1 nil
 failed to send request: closed)$
 
---- tcp_listen: 7658
+--- tcp_listen: $TEST_NGINX_RAND_PORT_1
 --- tcp_shutdown: 0
 --- tcp_reply: OK!
 --- tcp_no_close: 1
@@ -273,7 +273,7 @@ failed to send request: closed)$
     lua_socket_log_errors off;
     location /t {
         #set $port 5000;
-        set $port 7658;
+        set $port $TEST_NGINX_RAND_PORT_1;
 
         content_by_lua '
             local sock = ngx.socket.tcp()
@@ -349,13 +349,13 @@ F(ngx_http_lua_socket_tcp_finalize_write_part) {
     print_ubacktrace()
 }
 --- stap_out2
---- tcp_listen: 7658
+--- tcp_listen: $TEST_NGINX_RAND_PORT_1
 --- tcp_shutdown: 1
 --- tcp_query eval: "flush_all\r\n"
 --- tcp_query_len: 11
 --- no_error_log
 [error]
---- wait: 0.05
+--- wait: 0.5
 
 
 
@@ -501,7 +501,7 @@ close: nil closed
                 local res, err = sock:receive(1)
                 ngx.say("receive: ", res, " ", err)
 
-                local bytes, err = sock:send("flush_all")
+                local bytes, err = sock:send("get __nil")
                 ngx.say("send: ", bytes, " ", err)
 
                 local ok, err = sock:close()
@@ -572,7 +572,7 @@ close: 1 nil
                 local res, err = sock:receive(1)
                 ngx.say("receive: ", res, " ", err)
 
-                local bytes, err = sock:send("flush_all")
+                local bytes, err = sock:send("get __nil")
                 ngx.say("send: ", bytes, " ", err)
 
                 local ok, err = sock:close()

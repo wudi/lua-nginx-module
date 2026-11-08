@@ -37,6 +37,12 @@ static u_char *ngx_http_lua_log_ssl_cert_error(ngx_log_t *log, u_char *buf,
 static ngx_int_t ngx_http_lua_ssl_cert_by_chunk(lua_State *L,
     ngx_http_request_t *r);
 
+#ifndef OPENSSL_IS_BORINGSSL
+#if defined(OPENSSL_VERSION_NUMBER) && OPENSSL_VERSION_NUMBER > 0x101010afL
+static int ngx_http_lua_is_grease_cipher(uint16_t cipher_id);
+#endif
+#endif
+
 
 ngx_int_t
 ngx_http_lua_ssl_cert_handler_file(ngx_http_request_t *r,
@@ -213,7 +219,7 @@ ngx_http_lua_ssl_cert_handler(ngx_ssl_conn_t *ssl_conn, void *data)
 
         if (cctx->done) {
             ngx_log_debug1(NGX_LOG_DEBUG_HTTP, c->log, 0,
-                           "lua_certificate_by_lua: cert cb exit code: %d",
+                           "ssl_certificate_by_lua: cert cb exit code: %d",
                            cctx->exit_code);
 
             dd("lua ssl cert done, finally");
@@ -315,7 +321,7 @@ ngx_http_lua_ssl_cert_handler(ngx_ssl_conn_t *ssl_conn, void *data)
         }
 
         ngx_log_debug2(NGX_LOG_DEBUG_HTTP, c->log, 0,
-                       "lua_certificate_by_lua: handler return value: %i, "
+                       "ssl_certificate_by_lua: handler return value: %i, "
                        "cert cb exit code: %d", rc, cctx->exit_code);
 
         c->log->action = "SSL handshaking";
@@ -346,7 +352,6 @@ ngx_http_lua_ssl_cert_handler(ngx_ssl_conn_t *ssl_conn, void *data)
 
     return -1;
 
-#if 1
 failed:
 
     if (r && r->pool) {
@@ -358,15 +363,14 @@ failed:
     }
 
     return 0;
-#endif
 }
 
 
 static void
 ngx_http_lua_ssl_cert_done(void *data)
 {
-    ngx_connection_t                *c;
-    ngx_http_lua_ssl_ctx_t          *cctx = data;
+    ngx_connection_t        *c;
+    ngx_http_lua_ssl_ctx_t  *cctx = data;
 
     dd("lua ssl cert done");
 
@@ -387,6 +391,14 @@ ngx_http_lua_ssl_cert_done(void *data)
     c->log->action = "SSL handshaking";
 
     ngx_post_event(c->write, &ngx_posted_events);
+
+#if (HAVE_QUIC_SSL_LUA_YIELD_PATCH && NGX_HTTP_V3)
+#   if OPENSSL_VERSION_NUMBER >= 0x1000205fL
+#       if (NGX_QUIC_OPENSSL_COMPAT || NGX_QUIC_OPENSSL_API)
+    ngx_http_lua_resume_quic_ssl_handshake(c);
+#       endif
+#   endif
+#endif
 }
 
 
@@ -395,7 +407,7 @@ ngx_http_lua_ssl_cert_aborted(void *data)
 {
     ngx_http_lua_ssl_ctx_t      *cctx = data;
 
-    dd("lua ssl cert done");
+    dd("lua ssl cert aborted");
 
     if (cctx->done) {
         /* completed successfully already */
@@ -403,7 +415,7 @@ ngx_http_lua_ssl_cert_aborted(void *data)
     }
 
     ngx_log_debug0(NGX_LOG_DEBUG_HTTP, cctx->connection->log, 0,
-                   "lua_certificate_by_lua: cert cb aborted");
+                   "ssl_certificate_by_lua: cert cb aborted");
 
     cctx->aborted = 1;
     cctx->request->connection->ssl = NULL;
@@ -444,6 +456,20 @@ ngx_http_lua_log_ssl_cert_error(ngx_log_t *log, u_char *buf, size_t len)
 
     return buf;
 }
+
+
+#ifndef OPENSSL_IS_BORINGSSL
+#if defined(OPENSSL_VERSION_NUMBER) && OPENSSL_VERSION_NUMBER > 0x101010afL
+static int
+ngx_http_lua_is_grease_cipher(uint16_t cipher_id)
+{
+    /* GREASE values follow pattern: 0x?A?A where ? can be any hex digit */
+    /* and both ? must be the same */
+    /* Check if both bytes follow ?A pattern and high nibbles match */
+    return (cipher_id & 0x0F0F) == 0x0A0A;
+}
+#endif
+#endif
 
 
 static ngx_int_t
@@ -758,6 +784,152 @@ failed:
 }
 
 
+#if !(defined LIBRESSL_VERSION_NUMBER || defined OPENSSL_IS_BORINGSSL        \
+      || OPENSSL_VERSION_NUMBER < 0x30200000L)
+
+static ngx_int_t
+ngx_http_lua_ssl_compress_cert(ngx_ssl_conn_t *ssl_conn, SSL *tmp_conn,
+    int alg, char **err)
+{
+    size_t            len, orig_len;
+    unsigned char    *data = NULL;
+
+    len = SSL_get1_compressed_cert(tmp_conn, alg, &data, &orig_len);
+    if (len == 0) {
+        *err = "SSL_get1_compressed_cert() failed";
+        return NGX_ERROR;
+    }
+
+    if (SSL_set1_compressed_cert(ssl_conn, alg, data, len, orig_len) != 1) {
+        OPENSSL_free(data);
+        *err = "SSL_set1_compressed_cert() failed";
+        return NGX_ERROR;
+    }
+
+    OPENSSL_free(data);
+
+    return NGX_OK;
+}
+
+#endif
+
+
+int
+ngx_http_lua_ffi_ssl_compress_certs(ngx_http_request_t *r, int alg, char **err)
+{
+#if (defined LIBRESSL_VERSION_NUMBER || defined OPENSSL_IS_BORINGSSL         \
+     || OPENSSL_VERSION_NUMBER < 0x30200000L)
+
+    *err = "at least OpenSSL 3.2.0 required but found " OPENSSL_VERSION_TEXT;
+    return NGX_ERROR;
+
+#else
+
+    int                i, n;
+    X509              *x509;
+    SSL               *tmp_conn = NULL;
+    STACK_OF(X509)    *chain;
+    ngx_ssl_conn_t    *ssl_conn;
+
+    if (r->connection == NULL || r->connection->ssl == NULL) {
+        *err = "bad request";
+        return NGX_ERROR;
+    }
+
+    ssl_conn = r->connection->ssl->connection;
+    if (ssl_conn == NULL) {
+        *err = "bad ssl conn";
+        return NGX_ERROR;
+    }
+
+    /*
+     * alg 0 (TLSEXT_comp_cert_none) means "every algorithm enabled in the
+     * library", like the alg argument of SSL_CTX_compress_certs()
+     */
+
+    if (alg < TLSEXT_comp_cert_none || alg >= TLSEXT_comp_cert_limit) {
+        *err = "unknown certificate compression algorithm";
+        return NGX_ERROR;
+    }
+
+    x509 = SSL_get_certificate(ssl_conn);
+    if (x509 == NULL) {
+        *err = "no certificate set on this connection";
+        return NGX_ERROR;
+    }
+
+    /*
+     * OpenSSL pre-compresses certificates only on a connection that has not
+     * started its handshake yet: ssl_get_cert_to_compress() gives up unless
+     * SSL_in_before(), and ssl_certificate_by_lua* runs from the middle of a
+     * handshake. So compress on a throw-away connection holding the same
+     * chain, and hand the result to the live one with
+     * SSL_set1_compressed_cert(), which carries no such restriction.
+     */
+
+    tmp_conn = SSL_new(SSL_get_SSL_CTX(ssl_conn));
+    if (tmp_conn == NULL) {
+        *err = "SSL_new() failed";
+        goto failed;
+    }
+
+    if (SSL_use_certificate(tmp_conn, x509) != 1) {
+        *err = "SSL_use_certificate() failed";
+        goto failed;
+    }
+
+    if (SSL_get0_chain_certs(ssl_conn, &chain) != 1) {
+        *err = "SSL_get0_chain_certs() failed";
+        goto failed;
+    }
+
+    /* Also clear the inherited chain when the live connection has none. */
+
+    if (SSL_set1_chain(tmp_conn, chain) != 1) {
+        *err = "SSL_set1_chain() failed";
+        goto failed;
+    }
+
+    n = 0;
+
+    for (i = TLSEXT_comp_cert_none + 1; i < TLSEXT_comp_cert_limit; i++) {
+
+        if (alg != TLSEXT_comp_cert_none && i != alg) {
+            continue;
+        }
+
+        if (ngx_http_lua_ssl_compress_cert(ssl_conn, tmp_conn, i, err)
+            == NGX_OK)
+        {
+            n++;
+        }
+    }
+
+    if (n == 0) {
+        /* *err was set by the last attempt */
+        goto failed;
+    }
+
+    SSL_free(tmp_conn);
+
+    ERR_clear_error();
+
+    return NGX_OK;
+
+failed:
+
+    if (tmp_conn) {
+        SSL_free(tmp_conn);
+    }
+
+    ERR_clear_error();
+
+    return NGX_ERROR;
+
+#endif
+}
+
+
 int
 ngx_http_lua_ffi_ssl_raw_server_addr(ngx_http_request_t *r, char **addr,
     size_t *addrlen, int *addrtype, char **err)
@@ -830,6 +1002,74 @@ ngx_http_lua_ffi_ssl_raw_server_addr(ngx_http_request_t *r, char **addr,
     }
 
     return NGX_OK;
+}
+
+
+int
+ngx_http_lua_ffi_req_shared_ssl_ciphers(ngx_http_request_t *r,
+    uint16_t *ciphers, uint16_t *nciphers, int filter_grease, char **err)
+{
+#ifdef OPENSSL_IS_BORINGSSL
+
+    *err = "BoringSSL is not supported for SSL cipher operations";
+    return NGX_ERROR;
+
+#elif OPENSSL_VERSION_NUMBER < 0x101010afL
+    *err = "OpenSSL < 1.1.1a is not supported for SSL cipher operations";
+    return NGX_ERROR;
+#else
+
+    ngx_ssl_conn_t         *ssl_conn;
+    STACK_OF(SSL_CIPHER)   *sk, *ck;
+    int                     sn, cn, i, n;
+    uint16_t                cipher;
+
+    if (r == NULL || r->connection == NULL || r->connection->ssl == NULL) {
+        *err = "bad request";
+        return NGX_ERROR;
+    }
+
+    ssl_conn = r->connection->ssl->connection;
+    if (ssl_conn == NULL) {
+        *err = "bad ssl conn";
+        return NGX_ERROR;
+    }
+
+    sk = SSL_get1_supported_ciphers(ssl_conn);
+    ck = SSL_get_client_ciphers(ssl_conn);
+    sn = sk_SSL_CIPHER_num(sk);
+    cn = sk_SSL_CIPHER_num(ck);
+
+    if (sn > *nciphers) {
+        *err = "buffer too small";
+        *nciphers = 0;
+        sk_SSL_CIPHER_free(sk);
+        return NGX_ERROR;
+    }
+
+    for (*nciphers = 0, i = 0; i < sn; i++) {
+        cipher = SSL_CIPHER_get_protocol_id(sk_SSL_CIPHER_value(sk, i));
+
+        /* Skip GREASE ciphers if filtering is enabled */
+        if (filter_grease && ngx_http_lua_is_grease_cipher(cipher)) {
+            continue;
+        }
+
+        for (n = 0; n < cn; n++) {
+            if (SSL_CIPHER_get_protocol_id(sk_SSL_CIPHER_value(ck, n))
+                == cipher)
+            {
+                ciphers[(*nciphers)++] = cipher;
+                break;
+            }
+        }
+    }
+
+    sk_SSL_CIPHER_free(sk);
+
+    return NGX_OK;
+#endif
+
 }
 
 
@@ -1172,6 +1412,81 @@ ngx_http_lua_ffi_parse_pem_cert(const u_char *pem, size_t pem_len,
 }
 
 
+void *
+ngx_http_lua_ffi_parse_der_cert(const char *data, size_t len,
+    char **err)
+{
+    BIO             *bio;
+    X509            *x509;
+    STACK_OF(X509)  *chain;
+
+    if (data == NULL || len == 0) {
+        *err = "invalid argument";
+        ERR_clear_error();
+        return NULL;
+    }
+
+    bio = BIO_new_mem_buf((char *) data, len);
+    if (bio == NULL) {
+        *err = "BIO_new_mem_buf() failed";
+        ERR_clear_error();
+        return NULL;
+    }
+
+    x509 = d2i_X509_bio(bio, NULL);
+    if (x509 == NULL) {
+        *err = "d2i_X509_bio() failed";
+        BIO_free(bio);
+        ERR_clear_error();
+        return NULL;
+    }
+
+    chain = sk_X509_new_null();
+    if (chain == NULL) {
+        *err = "sk_X509_new_null() failed";
+        X509_free(x509);
+        BIO_free(bio);
+        ERR_clear_error();
+        return NULL;
+    }
+
+    if (sk_X509_push(chain, x509) == 0) {
+        *err = "sk_X509_push() failed";
+        sk_X509_free(chain);
+        X509_free(x509);
+        BIO_free(bio);
+        ERR_clear_error();
+        return NULL;
+    }
+
+    /* read rest of the chain */
+
+    while (!BIO_eof(bio)) {
+        x509 = d2i_X509_bio(bio, NULL);
+        if (x509 == NULL) {
+            *err = "d2i_X509_bio() failed in rest of chain";
+            sk_X509_pop_free(chain, X509_free);
+            BIO_free(bio);
+            ERR_clear_error();
+            return NULL;
+        }
+
+        if (sk_X509_push(chain, x509) == 0) {
+            *err = "sk_X509_push() failed in rest of chain";
+            sk_X509_pop_free(chain, X509_free);
+            X509_free(x509);
+            BIO_free(bio);
+            ERR_clear_error();
+            return NULL;
+        }
+    }
+
+    BIO_free(bio);
+
+    return chain;
+}
+
+
 void
 ngx_http_lua_ffi_free_cert(void *cdata)
 {
@@ -1204,6 +1519,40 @@ ngx_http_lua_ffi_parse_pem_priv_key(const u_char *pem, size_t pem_len,
     }
 
     BIO_free(in);
+
+    return pkey;
+}
+
+
+void *
+ngx_http_lua_ffi_parse_der_priv_key(const char *data, size_t len,
+    char **err)
+{
+    BIO               *bio = NULL;
+    EVP_PKEY          *pkey = NULL;
+
+    if (data == NULL || len == 0) {
+        *err = "invalid argument";
+        ERR_clear_error();
+        return NULL;
+    }
+
+    bio = BIO_new_mem_buf((char *) data, len);
+    if (bio == NULL) {
+        *err = "BIO_new_mem_buf() failed";
+        ERR_clear_error();
+        return NULL;
+    }
+
+    pkey = d2i_PrivateKey_bio(bio, NULL);
+    if (pkey == NULL) {
+        *err = "d2i_PrivateKey_bio() failed";
+        BIO_free(bio);
+        ERR_clear_error();
+        return NULL;
+    }
+
+    BIO_free(bio);
 
     return pkey;
 }
@@ -1324,7 +1673,7 @@ ngx_http_lua_ffi_set_priv_key(ngx_http_request_t *r,
 
     pkey = cdata;
     if (pkey == NULL) {
-        *err = "invalid private key failed";
+        *err = "invalid private key";
         goto failed;
     }
 
@@ -1359,8 +1708,8 @@ ngx_http_lua_ssl_verify_callback(int ok, X509_STORE_CTX *x509_store)
 
 
 int
-ngx_http_lua_ffi_ssl_verify_client(ngx_http_request_t *r, void *ca_certs,
-    int depth, char **err)
+ngx_http_lua_ffi_ssl_verify_client(ngx_http_request_t *r, void *client_certs,
+    void *trusted_certs, int depth, char **err)
 {
 #ifdef LIBRESSL_VERSION_NUMBER
 
@@ -1372,7 +1721,8 @@ ngx_http_lua_ffi_ssl_verify_client(ngx_http_request_t *r, void *ca_certs,
     ngx_http_lua_ctx_t          *ctx;
     ngx_ssl_conn_t              *ssl_conn;
     ngx_http_ssl_srv_conf_t     *sscf;
-    STACK_OF(X509)              *chain = ca_certs;
+    STACK_OF(X509)              *client_chain = client_certs;
+    STACK_OF(X509)              *trusted_chain = trusted_certs;
     STACK_OF(X509_NAME)         *name_chain = NULL;
     X509                        *x509 = NULL;
     X509_NAME                   *subject = NULL;
@@ -1426,54 +1776,78 @@ ngx_http_lua_ffi_ssl_verify_client(ngx_http_request_t *r, void *ca_certs,
 
     /* set CA chain */
 
-    if (chain != NULL) {
+    if (client_chain != NULL || trusted_chain != NULL) {
+
         ca_store = X509_STORE_new();
         if (ca_store == NULL) {
             *err = "X509_STORE_new() failed";
             return NGX_ERROR;
         }
 
-        /* construct name chain */
+        if (client_chain != NULL) {
 
-        name_chain = sk_X509_NAME_new_null();
-        if (name_chain == NULL) {
-            *err = "sk_X509_NAME_new_null() failed";
-            goto failed;
+            /* construct name chain */
+            name_chain = sk_X509_NAME_new_null();
+            if (name_chain == NULL) {
+                *err = "sk_X509_NAME_new_null() failed";
+                goto failed;
+            }
+
+            for (i = 0; i < sk_X509_num(client_chain); i++) {
+                x509 = sk_X509_value(client_chain, i);
+                if (x509 == NULL) {
+                    *err = "sk_X509_value() failed";
+                    goto failed;
+                }
+
+                /* add subject to name chain, which will be sent to client */
+                subject = X509_NAME_dup(X509_get_subject_name(x509));
+                if (subject == NULL) {
+                    *err = "X509_get_subject_name() failed";
+                    goto failed;
+                }
+
+                if (!sk_X509_NAME_push(name_chain, subject)) {
+                    *err = "sk_X509_NAME_push() failed";
+                    X509_NAME_free(subject);
+                    goto failed;
+                }
+
+                /* add to trusted CA store */
+                if (X509_STORE_add_cert(ca_store, x509) == 0) {
+                    *err = "X509_STORE_add_cert() failed";
+                    goto failed;
+                }
+            }
+
+            /* clean subject name list, and set it for send to client */
+            SSL_set_client_CA_list(ssl_conn, name_chain);
+
+            /* ssl_conn now owns name_chain; avoid freeing it on error paths */
+            name_chain = NULL;
         }
 
-        for (i = 0; i < sk_X509_num(chain); i++) {
-            x509 = sk_X509_value(chain, i);
-            if (x509 == NULL) {
-                *err = "sk_X509_value() failed";
-                goto failed;
-            }
+        if (trusted_chain != NULL) {
+            for (i = 0; i < sk_X509_num(trusted_chain); i++) {
+                x509 = sk_X509_value(trusted_chain, i);
+                if (x509 == NULL) {
+                    *err = "sk_X509_value() failed";
+                    goto failed;
+                }
 
-            /* add subject to name chain, which will be sent to client */
-            subject = X509_NAME_dup(X509_get_subject_name(x509));
-            if (subject == NULL) {
-                *err = "X509_get_subject_name() failed";
-                goto failed;
-            }
-
-            if (!sk_X509_NAME_push(name_chain, subject)) {
-                *err = "sk_X509_NAME_push() failed";
-                X509_NAME_free(subject);
-                goto failed;
-            }
-
-            /* add to trusted CA store */
-            if (X509_STORE_add_cert(ca_store, x509) == 0) {
-                *err = "X509_STORE_add_cert() failed";
-                goto failed;
+                /* add to trusted CA store */
+                if (X509_STORE_add_cert(ca_store, x509) == 0) {
+                    *err = "X509_STORE_add_cert() failed";
+                    goto failed;
+                }
             }
         }
 
+        /* clean ca_store, and store new ca_store */
         if (SSL_set0_verify_cert_store(ssl_conn, ca_store) == 0) {
             *err = "SSL_set0_verify_cert_store() failed";
             goto failed;
         }
-
-        SSL_set_client_CA_list(ssl_conn, name_chain);
     }
 
     return NGX_OK;
@@ -1489,14 +1863,111 @@ failed:
 }
 
 
+SSL_CTX *
+ngx_http_lua_ffi_get_req_ssl_ctx(ngx_http_request_t *r, const char **err)
+{
+    if (r == NULL || r->connection == NULL || r->connection->ssl == NULL) {
+        *err = "bad request";
+        return NULL;
+    }
+
+    if (r->connection->ssl->session_ctx == NULL) {
+        *err = "bad ssl context";
+        return NULL;
+    }
+
+    /* Keep the session context even if SNI selects a different SSL_CTX. */
+    return r->connection->ssl->session_ctx;
+}
+
+
 ngx_ssl_conn_t *
-ngx_http_lua_ffi_get_req_ssl_pointer(ngx_http_request_t *r)
+ngx_http_lua_ffi_get_req_ssl_pointer(ngx_http_request_t *r, const char **err)
 {
     if (r->connection == NULL || r->connection->ssl == NULL) {
+        *err = "bad request";
+        return NULL;
+    }
+
+    if (r->connection->ssl->connection == NULL) {
+        *err = "bad ssl connection";
         return NULL;
     }
 
     return r->connection->ssl->connection;
+}
+
+
+int
+ngx_http_lua_ffi_ssl_client_random(ngx_http_request_t *r,
+    unsigned char *out, size_t *outlen, char **err)
+{
+    ngx_ssl_conn_t          *ssl_conn;
+
+    if (r->connection == NULL || r->connection->ssl == NULL) {
+        *err = "bad request";
+        return NGX_ERROR;
+    }
+
+    ssl_conn = r->connection->ssl->connection;
+    if (ssl_conn == NULL) {
+        *err = "bad ssl conn";
+        return NGX_ERROR;
+    }
+
+    *outlen = SSL_get_client_random(ssl_conn, out, *outlen);
+
+    return NGX_OK;
+}
+
+
+int
+ngx_http_lua_ffi_ssl_server_random(ngx_http_request_t *r,
+    unsigned char *out, size_t *outlen, char **err)
+{
+    ngx_ssl_conn_t          *ssl_conn;
+
+    if (r->connection == NULL || r->connection->ssl == NULL) {
+        *err = "bad request";
+        return NGX_ERROR;
+    }
+
+    ssl_conn = r->connection->ssl->connection;
+    if (ssl_conn == NULL) {
+        *err = "bad ssl conn";
+        return NGX_ERROR;
+    }
+
+    *outlen = SSL_get_server_random(ssl_conn, out, *outlen);
+
+    return NGX_OK;
+}
+
+
+int
+ngx_http_lua_ffi_ssl_session_master_key(ngx_http_request_t *r,
+    unsigned char *out, size_t *outlen, char **err)
+{
+    ngx_ssl_conn_t          *ssl_conn;
+    SSL_SESSION             *sess;
+
+    if (r->connection == NULL || r->connection->ssl == NULL) {
+        *err = "bad request";
+        return NGX_ERROR;
+    }
+
+    ssl_conn = r->connection->ssl->connection;
+    if (ssl_conn == NULL) {
+        *err = "bad ssl conn";
+        return NGX_ERROR;
+    }
+
+    sess = SSL_get0_session(ssl_conn);
+
+
+    *outlen = SSL_SESSION_get_master_key(sess, out, *outlen);
+
+    return NGX_OK;
 }
 
 

@@ -1,6 +1,7 @@
 # vim:set ft= ts=4 sw=4 et fdm=marker:
 
 use Test::Nginx::Socket::Lua;
+use Test::Nginx::Socket::Lua::Stream;
 
 repeat_each(2);
 
@@ -10,6 +11,7 @@ our $HtmlDir = html_dir;
 
 $ENV{TEST_NGINX_MEMCACHED_PORT} ||= 11211;
 $ENV{TEST_NGINX_RESOLVER} ||= '8.8.8.8';
+$ENV{TEST_NGINX_HTML_DIR} ||= html_dir();
 
 #log_level 'warn';
 log_level 'debug';
@@ -207,8 +209,8 @@ attempt to send data on a closed socket:
     location /t {
         content_by_lua '
             local sock = ngx.socket.tcp()
-            local port = 80
-            local ok, err = sock:connect("agentzh.org", port)
+            local port = $TEST_NGINX_SERVER_PORT
+            local ok, err = sock:connect("localhost", port)
             if not ok then
                 ngx.say("failed to connect: ", err)
                 return
@@ -216,7 +218,7 @@ attempt to send data on a closed socket:
 
             ngx.say("connected: ", ok)
 
-            local req = "GET / HTTP/1.0\\r\\nHost: agentzh.org\\r\\nConnection: close\\r\\n\\r\\n"
+            local req = "GET /foo HTTP/1.0\\r\\nHost: localhost\\r\\nConnection: close\\r\\n\\r\\n"
             -- req = "OK"
 
             local bytes, err = sock:send(req)
@@ -245,16 +247,22 @@ attempt to send data on a closed socket:
         ';
     }
 
+    location /foo {
+        content_by_lua 'ngx.say("foo")';
+        more_clear_headers Date;
+    }
+
 --- request
 GET /t
 --- response_body_like
 connected: 1
-request sent: 56
+request sent: 57
 first line received: HTTP\/1\.1 200 OK
 second line received: (?:Date|Server): .*?
 --- no_error_log
 [error]
 --- timeout: 10
+--- skip_eval: 3:$ENV{TEST_NGINX_USE_HTTP3}
 
 
 
@@ -324,7 +332,7 @@ send: nil closed
 receive: nil closed
 close: nil closed
 --- error_log
-lua tcp socket connect timed out, when connecting to 127.0.0.2:12345
+lua tcp socket connect timed out, upstream: 127.0.0.2:12345(127.0.0.2)
 --- timeout: 10
 
 
@@ -1101,7 +1109,7 @@ function go(port)
         ngx.say("connected: ", ok)
     end
 
-    local req = "flush_all\r\n"
+    local req = "get __nil\r\n"
 
     local bytes, err = sock:send(req)
     if not bytes then
@@ -1123,7 +1131,7 @@ GET /t
 --- response_body_like eval
 "^(?:connected: 1
 request sent: 11
-received: OK|failed to send request: closed)\$"
+received: END|failed to send request: closed)\$"
 
 
 
@@ -1171,7 +1179,7 @@ function go(port)
         return
     end
 
-    local req = "flush_all\r\n"
+    local req = "get __nil\r\n"
 
     local bytes, err = sock:send(req)
     if not bytes then
@@ -1199,7 +1207,7 @@ GET /t
 --- response_body_like eval
 qr/^(?:connected: 1
 request sent: 11
-received: OK|failed to receive a line: closed \[nil\])$/
+received: END|failed to receive a line: closed \[nil\])$/
 
 
 
@@ -1247,7 +1255,7 @@ function go(port)
         return
     end
 
-    local req = "flush_all\r\n"
+    local req = "get __nil\r\n"
 
     local bytes, err = sock:send(req)
     if not bytes then
@@ -1269,7 +1277,7 @@ GET /t
 --- response_body_like eval
 qr/^(?:connected: 1
 request sent: 11
-received: OK|failed to close: closed)$/
+received: END|failed to close: closed)$/
 
 
 
@@ -1318,7 +1326,7 @@ function go(port)
         ngx.say("connected again: ", ok)
     end
 
-    local req = "flush_all\r\n"
+    local req = "get __nil\r\n"
 
     local bytes, err = sock:send(req)
     if not bytes then
@@ -1340,7 +1348,7 @@ GET /t
 --- response_body_like eval
 qr/^(?:connected(?: again)?: 1
 request sent: 11
-received: OK
+received: END
 ){2}$/
 --- error_log
 lua reuse socket upstream ctx
@@ -1378,7 +1386,7 @@ lua reuse socket upstream ctx
 
             ngx.say("connected again: ", ok)
 
-            local req = "flush_all\\r\\n"
+            local req = "get __nil\\r\\n"
 
             local bytes, err = sock:send(req)
             if not bytes then
@@ -1410,7 +1418,7 @@ GET /t
 connected: 1
 connected again: 1
 request sent: 11
-received: OK
+received: END
 close: 1 nil
 --- no_error_log
 [error]
@@ -1451,7 +1459,7 @@ close: 1 nil
 
             ngx.say("2: connected: ", ok)
 
-            local req1 = "flush_all\\r\\n"
+            local req1 = "get __nil\\r\\n"
             local bytes, err = sock1:send(req1)
             if not bytes then
                 ngx.say("1: failed to send request: ", err)
@@ -1502,7 +1510,7 @@ GET /t
 2: connected: 1
 1: request sent: 11
 2: request sent: 57
-1: received: OK
+1: received: END
 2: received: HTTP/1.1 200 OK
 1: close: 1 nil
 2: close: 1 nil
@@ -1639,8 +1647,8 @@ GET /t
 --- ignore_response
 --- error_log
 bad argument #1 to 'send' (bad data type nil found)
---- curl_error
-curl: (52) Empty reply from server
+--- curl_error eval
+qr#curl: \(52\) Empty reply from server|curl: \(95\) HTTP/3 stream 0 reset by server#
 
 
 
@@ -1701,8 +1709,8 @@ GET /t
 --- ignore_response
 --- error_log
 bad argument #1 to 'send' (bad data type boolean found)
---- curl_error
-curl: (52) Empty reply from server
+--- curl_error eval
+qr#curl: \(52\) Empty reply from server|curl: \(95\) HTTP/3 stream 0 reset by server#
 
 
 
@@ -1763,8 +1771,8 @@ GET /t
 --- ignore_response
 --- error_log
 bad argument #1 to 'send' (bad data type userdata found)
---- curl_error
-curl: (52) Empty reply from server
+--- curl_error eval
+qr#curl: \(52\) Empty reply from server|curl: \(95\) HTTP/3 stream 0 reset by server#
 
 
 
@@ -1788,7 +1796,7 @@ curl: (52) Empty reply from server
 
             ngx.say("connected: ", ok)
 
-            local req = "flush_all\\r\\n"
+            local req = "get __nil\\r\\n"
 
             local bytes, err = sock:send(req)
             if not bytes then
@@ -1819,7 +1827,8 @@ curl: (52) Empty reply from server
     }
 
     location /memc {
-        set $memc_cmd flush_all;
+        set $memc_cmd get;
+        set $memc_key __nil;
         memc_pass 127.0.0.1:$TEST_NGINX_MEMCACHED_PORT;
     }
 --- request
@@ -1827,10 +1836,9 @@ GET /t
 --- response_body eval
 "connected: 1
 request sent: 11
-received: OK
+received: END
 close: 1 nil
-subrequest: 200, OK\r
-"
+subrequest: 404, "
 --- no_error_log
 [error]
 
@@ -3081,7 +3089,7 @@ if not ok then
 end
 
 --- response_body_like: 500 Internal Server Error
---- wait: 0.3
+--- wait: 1
 --- error_code: 500
 --- error_log
 resolve name done
@@ -3104,7 +3112,7 @@ runtime error: attempt to yield across C-call boundary
             end
             local function err()
                 local sock = ngx.socket.tcp()
-                local ok, err = sock:connect("agentzh.org", 12345)
+                local ok, err = sock:connect("localhost", $TEST_NGINX_RAND_PORT_1)
                 if not ok then
                     ngx.log(ngx.ERR, "failed to connect: ", err)
                     return
@@ -3118,7 +3126,7 @@ runtime error: attempt to yield across C-call boundary
     GET /t
 --- response_body
 ok
---- wait: 0.3
+--- wait: 3
 --- error_log
 resolve name done
 --- no_error_log
@@ -3751,7 +3759,7 @@ failed to setkeepalive: closed
 
             ngx.say("connected: ", ok)
 
-            local req = "flush_all\r\n"
+            local req = "get __nil\r\n"
 
             local bytes, err = sock:send(req)
             if not bytes then
@@ -3777,7 +3785,7 @@ GET /t
 --- response_body
 connected: 1
 request sent: 11
-received: OK
+received: END
 close: 1 nil
 --- no_error_log
 [error]
@@ -3990,6 +3998,7 @@ hello world
 [error]
 --- error_log
 lua tcp socket read any
+--- skip_eval: 4:defined($ENV{MOCKEAGAIN}) && ($ENV{MOCKEAGAIN} ne "")
 
 
 
@@ -3997,10 +4006,13 @@ lua tcp socket read any
 --- config
     server_tokens off;
     location = /t {
+        set $port $TEST_NGINX_RAND_PORT_1;
+
         content_by_lua_block {
             local sock = ngx.socket.tcp()
+            local port = ngx.var.port
             sock:settimeout(500)
-            assert(sock:connect("127.0.0.1", 7658))
+            assert(sock:connect("127.0.0.1", port))
 
             while true do
                 local data, err = sock:receiveany(1024)
@@ -4027,7 +4039,7 @@ lua tcp socket read any
 
 --- request
 GET /t
---- tcp_listen: 7658
+--- tcp_listen: $TEST_NGINX_RAND_PORT_1
 --- tcp_shutdown: 1
 --- tcp_query eval: "send data after read side closed"
 --- tcp_query_len: 32
@@ -4141,6 +4153,7 @@ hello world
 [error]
 --- error_log
 lua tcp socket calling receiveany() method to read at most 128 bytes
+--- skip_eval: 4:defined($ENV{MOCKEAGAIN}) && ($ENV{MOCKEAGAIN} ne "")
 
 
 
@@ -4216,6 +4229,7 @@ orld
 [error]
 --- error_log
 lua tcp socket calling receiveany() method to read at most 7 bytes
+--- skip_eval: 4:defined($ENV{MOCKEAGAIN}) && ($ENV{MOCKEAGAIN} ne "")
 
 
 
@@ -4493,3 +4507,144 @@ reused times: 3, setkeepalive err: closed
 --- no_error_log
 [error]
 --- skip_eval: 3: $ENV{TEST_NGINX_EVENT_TYPE} && $ENV{TEST_NGINX_EVENT_TYPE} ne 'epoll'
+
+
+
+=== TEST 74: setkeepalive with TLSv1.3
+--- skip_openssl: 3: < 1.1.1
+--- stream_server_config
+        listen unix:$TEST_NGINX_HTML_DIR/nginx.sock ssl;
+        ssl_certificate     ../../cert/test.crt;
+        ssl_certificate_key ../../cert/test.key;
+        ssl_protocols TLSv1.3;
+
+        content_by_lua_block {
+            local sock = assert(ngx.req.socket(true))
+            local data
+            while true do
+                data = sock:receive()
+                if not data then break end
+                assert(data == "hello")
+            end
+        }
+--- config
+    location /test {
+        lua_ssl_protocols TLSv1.3;
+        content_by_lua_block {
+            local sock = ngx.socket.tcp()
+            sock:settimeout(2000)
+
+            local ok, err = sock:connect("unix:$TEST_NGINX_HTML_DIR/nginx.sock")
+            if not ok then
+                ngx.say("failed to connect: ", err)
+                return
+            end
+
+            ngx.say("connected: ", ok)
+
+            local ok, err = sock:sslhandshake(false, nil, false)
+            if not ok then
+                ngx.say("failed to sslhandshake: ", err)
+                return
+            end
+
+            local ok, err = sock:send("hello\n")
+            if not ok then
+                ngx.say("failed to send: ", err)
+                return
+            end
+
+            -- sleep a while to make sure the NewSessionTicket message has arrived
+            ngx.sleep(1)
+
+            local ok, err = sock:setkeepalive()
+            if not ok then
+                ngx.say("failed to setkeepalive: ", err)
+            else
+                ngx.say("setkeepalive: ", ok)
+            end
+        }
+    }
+--- request
+GET /test
+--- response_body
+connected: 1
+setkeepalive: 1
+--- no_error_log
+[error]
+
+
+
+=== TEST 75: getfd()
+--- no_http2
+--- http_config
+    lua_package_path "../lua-resty-core/lib/?.lua;;";
+--- config
+    server_tokens off;
+    location /t {
+        #set $port 5000;
+        set $port $TEST_NGINX_SERVER_PORT;
+
+        content_by_lua_block {
+            local sock = ngx.socket.tcp()
+            local port = ngx.var.port
+            local ok, err = sock:connect("127.0.0.1", port)
+            if not ok then
+                ngx.say("failed to connect: ", err)
+                return
+            end
+
+            local s, err = sock:getfd()
+            ngx.say("fd: ", s)
+            ngx.say("connected: ", ok)
+
+            local req = "GET /foo HTTP/1.0\r\nHost: localhost\r\nConnection: close\r\n\r\n"
+            -- req = "OK"
+
+            local bytes, err = sock:send(req)
+            if not bytes then
+                ngx.say("failed to send request: ", err)
+                return
+            end
+
+            ngx.say("request sent: ", bytes)
+
+            while true do
+                local line, err, part = sock:receive()
+                if line then
+                    ngx.say("received: ", line)
+
+                else
+                    ngx.say("failed to receive a line: ", err, " [", part, "]")
+                    break
+                end
+            end
+
+            ok, err = sock:close()
+            ngx.say("close: ", ok, " ", err)
+        }
+    }
+
+    location /foo {
+        content_by_lua 'ngx.say("foo")';
+        more_clear_headers Date;
+    }
+
+--- request
+GET /t
+--- response_body eval
+qr/fd: \d+
+connected: 1
+request sent: 57
+received: HTTP\/1.1 200 OK
+received: Server: nginx
+received: Content-Type: text\/plain
+received: Content-Length: 4
+received: Connection: close
+received: 
+received: foo
+failed to receive a line: closed \[\]
+close: 1 nil
+/ms
+--- no_error_log
+[error]

@@ -21,6 +21,13 @@
 #define NGX_HTTP_LUA_SOCKET_FT_CLIENTABORT   0x0080
 #define NGX_HTTP_LUA_SOCKET_FT_SSL           0x0100
 
+/* max cosocket host length, just for logging,
+ * length greater are omitted
+ */
+#ifndef COSOCKET_HOST_LEN
+#define COSOCKET_HOST_LEN  32
+#endif
+
 
 typedef struct ngx_http_lua_socket_tcp_upstream_s
         ngx_http_lua_socket_tcp_upstream_t;
@@ -28,6 +35,9 @@ typedef struct ngx_http_lua_socket_tcp_upstream_s
 
 typedef struct ngx_http_lua_socket_udata_queue_s
         ngx_http_lua_socket_udata_queue_t;
+
+typedef struct ngx_http_lua_socket_pool_item_s
+        ngx_http_lua_socket_pool_item_t;
 
 
 typedef
@@ -45,7 +55,11 @@ typedef struct {
     ngx_str_t                           host;
     ngx_http_cleanup_pt                *cleanup;
     ngx_http_lua_socket_tcp_upstream_t *u;
+    ngx_http_lua_socket_pool_item_t    *item;
     in_port_t                           port;
+
+    /* waiting for a slot; otherwise this operation owns one */
+    unsigned                            queued:1;
 } ngx_http_lua_socket_tcp_conn_op_ctx_t;
 
 
@@ -60,11 +74,13 @@ typedef struct {
     ngx_int_t                          size;
     ngx_queue_t                        cache_connect_op;
     ngx_queue_t                        wait_connect_op;
+    ngx_queue_t                        posted_connect_op;
 
-    /* connections == active connections + pending connect operations,
-     * while active connections == out-of-pool reused connections
-     *                             + in-pool connections */
+    /* slots held by active sockets, cached connections, and posted connects */
     ngx_int_t                          connections;
+
+    /* connect operations still waiting for a slot */
+    ngx_int_t                          waiting;
 
     /* queues of ngx_http_lua_socket_pool_item_t: */
     ngx_queue_t                        cache;
@@ -117,12 +133,18 @@ struct ngx_http_lua_socket_tcp_upstream_s {
     ngx_http_lua_co_ctx_t           *write_co_ctx;
 
     ngx_uint_t                       reused;
+    struct sockaddr_storage          sockaddr;
+    socklen_t                        socklen;
+
+    ngx_log_t                        log;
+    char                             host[COSOCKET_HOST_LEN];
 
 #if (NGX_HTTP_SSL)
     ngx_str_t                        ssl_name;
     ngx_ssl_session_t               *ssl_session_ret;
     const char                      *error_ret;
     int                              openssl_error_code_ret;
+    X509_STORE                      *ssl_trusted_store;
 #endif
 
     ngx_chain_t                     *busy_bufs;
@@ -166,7 +188,7 @@ typedef struct {
 } ngx_http_lua_socket_compiled_pattern_t;
 
 
-typedef struct {
+struct ngx_http_lua_socket_pool_item_s {
     ngx_http_lua_socket_pool_t      *socket_pool;
 
     ngx_queue_t                      queue;
@@ -174,11 +196,14 @@ typedef struct {
 
     socklen_t                        socklen;
     struct sockaddr_storage          sockaddr;
+    char                             host[COSOCKET_HOST_LEN];
 
     ngx_uint_t                       reused;
 
     ngx_http_lua_socket_udata_queue_t   *udata_queue;
-} ngx_http_lua_socket_pool_item_t;
+
+    ngx_http_lua_socket_tcp_conn_op_ctx_t *owner;
+};
 
 
 struct ngx_http_lua_socket_udata_queue_s {

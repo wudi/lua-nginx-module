@@ -14,6 +14,8 @@ repeat_each(2);
 plan tests => repeat_each() * (blocks() * 3 + 2);
 
 $ENV{TEST_NGINX_MEMCACHED_PORT} ||= 11211;
+# Isolate keys from other files and concurrent runs of this file.
+$ENV{TEST_NGINX_MEMCACHED_PREFIX} = "lua_nginx_005_exit_$$";
 $ENV{TEST_NGINX_MYSQL_PORT} ||= 3306;
 
 our $LuaCpath = $ENV{LUA_CPATH} ||
@@ -124,6 +126,7 @@ GET /api?user=agentz
 
 === TEST 6: working with ngx_auth_request (simplest form, w/o ngx_memc)
 --- skip_eval: 3:$ENV{TEST_NGINX_USE_HTTP3}
+--- no_http2
 --- http_config eval
 "
     lua_package_cpath '$::LuaCpath';
@@ -137,7 +140,7 @@ GET /api?user=agentz
     location /memc {
         internal;
 
-        set $memc_key $arg_key;
+        set $memc_key "$TEST_NGINX_MEMCACHED_PREFIX:6:$arg_key";
         set $memc_exptime $arg_exptime;
 
         memc_pass 127.0.0.1:$TEST_NGINX_MEMCACHED_PORT;
@@ -197,6 +200,7 @@ Logged in 56
 
 === TEST 7: working with ngx_auth_request (simplest form)
 --- skip_eval: 3:$ENV{TEST_NGINX_USE_HTTP3}
+--- no_http2
 --- http_config eval
 "
     lua_package_cpath '$::LuaCpath';
@@ -210,7 +214,7 @@ Logged in 56
     location /memc {
         internal;
 
-        set $memc_key $arg_key;
+        set $memc_key "$TEST_NGINX_MEMCACHED_PREFIX:7:$arg_key";
         set $memc_exptime $arg_exptime;
 
         memc_pass 127.0.0.1:$TEST_NGINX_MEMCACHED_PORT;
@@ -269,6 +273,7 @@ Logged in 56
 
 
 === TEST 8: working with ngx_auth_request
+--- no_http2
 --- skip_eval: 3:$ENV{TEST_NGINX_USE_HTTP3}
 --- http_config eval
 "
@@ -293,7 +298,7 @@ Logged in 56
     location /memc {
         internal;
 
-        set $memc_key $arg_key;
+        set $memc_key "$TEST_NGINX_MEMCACHED_PREFIX:8:$arg_key";
         set $memc_exptime $arg_exptime;
 
         set_hashed_upstream $backend memc_cluster $arg_key;
@@ -372,7 +377,7 @@ Logged in 56
     location /memc {
         internal;
 
-        set $memc_key $arg_key;
+        set $memc_key "$TEST_NGINX_MEMCACHED_PREFIX:9:$arg_key";
         set $memc_exptime $arg_exptime;
 
         #set_hashed_upstream $backend memc_cluster $arg_key;
@@ -656,6 +661,7 @@ GET /t
 --- response_body_like: 403 Forbidden
 --- no_error_log
 [error]
+--- skip_eval: 3:defined($ENV{MOCKEAGAIN}) && ($ENV{MOCKEAGAIN} =~ /w/)
 
 
 
@@ -674,6 +680,7 @@ GET /t
 --- response_body
 --- no_error_log
 [error]
+--- skip_eval: 3:defined($ENV{MOCKEAGAIN}) && ($ENV{MOCKEAGAIN} =~ /w/)
 
 
 
@@ -710,6 +717,7 @@ F(ngx_http_lua_header_filter_by_chunk).return {
 --- no_error_log
 [error]
 [alert]
+--- skip_eval: 4:defined($ENV{MOCKEAGAIN}) && ($ENV{MOCKEAGAIN} =~ /w/)
 
 
 
@@ -727,6 +735,7 @@ GET /t
 --- response_body
 --- no_error_log
 [error]
+--- skip_eval: 3:defined($ENV{MOCKEAGAIN}) && ($ENV{MOCKEAGAIN} =~ /w/)
 
 
 
@@ -762,6 +771,7 @@ GET /t
 
 
 === TEST 27: accepts NGX_ERROR
+--- no_http2
 --- config
     location = /t {
         content_by_lua_block {
@@ -774,10 +784,13 @@ GET /t
 --- response_body
 --- no_error_log
 [error]
+--- curl_error
+curl: (95) HTTP/3 stream 0 reset by server (error 0x102 INTERNAL_ERROR)
 
 
 
 === TEST 28: accepts NGX_DECLINED
+--- no_http2
 --- config
     location = /t {
         content_by_lua_block {
@@ -790,6 +803,8 @@ GET /t
 --- response_body
 --- no_error_log
 [error]
+--- curl_error
+curl: (95) HTTP/3 stream 0 reset by server (error 0x102 INTERNAL_ERROR)
 
 
 

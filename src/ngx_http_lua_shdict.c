@@ -198,9 +198,6 @@ ngx_http_lua_shdict_lookup(ngx_shm_zone_t *shm_zone, ngx_uint_t hash,
         rc = ngx_memn2cmp(kdata, sd->data, klen, (size_t) sd->key_len);
 
         if (rc == 0) {
-            ngx_queue_remove(&sd->queue);
-            ngx_queue_insert_head(&ctx->sh->lru_queue, &sd->queue);
-
             *sdp = sd;
 
             dd("node expires: %lld", (long long) sd->expires);
@@ -213,11 +210,14 @@ ngx_http_lua_shdict_lookup(ngx_shm_zone_t *shm_zone, ngx_uint_t hash,
 
                 dd("time to live: %lld", (long long) ms);
 
-                if (ms < 0) {
+                if (ms <= 0) {
                     dd("node already expired");
                     return NGX_DONE;
                 }
             }
+
+            ngx_queue_remove(&sd->queue);
+            ngx_queue_insert_head(&ctx->sh->lru_queue, &sd->queue);
 
             return NGX_OK;
         }
@@ -1323,6 +1323,11 @@ ngx_http_lua_ffi_shdict_store(ngx_shm_zone_t *zone, int op, u_char *key,
 
     dd("exptime: %ld", exptime);
 
+    if (key_len > 65535) {
+        *errmsg = "key too long";
+        return NGX_ERROR;
+    }
+
     ctx = zone->data;
 
     *forcible = 0;
@@ -1723,6 +1728,11 @@ ngx_http_lua_ffi_shdict_incr(ngx_shm_zone_t *zone, u_char *key,
         tp = ngx_timeofday();
     }
 
+    if (key_len > 65535) {
+        *err = "key too long";
+        return NGX_ERROR;
+    }
+
     ctx = zone->data;
 
     *forcible = 0;
@@ -2063,6 +2073,65 @@ ngx_http_lua_ffi_shdict_set_expire(ngx_shm_zone_t *zone, u_char *key,
 
     ngx_shmtx_unlock(&ctx->shpool->mutex);
 
+    return NGX_OK;
+}
+
+
+/*
+ * Compare ownership and mutate the entry under the same slab mutex so an
+ * expired owner cannot delete or renew a successor's lock.
+ */
+int
+ngx_http_lua_ffi_shdict_compare_expire(ngx_shm_zone_t *zone,
+    const u_char *key, size_t key_len, const u_char *value,
+    size_t value_len, long exptime)
+{
+    ngx_int_t                    rc;
+    uint32_t                     hash;
+    ngx_time_t                  *tp;
+    ngx_rbtree_node_t           *node;
+    ngx_http_lua_shdict_ctx_t   *ctx;
+    ngx_http_lua_shdict_node_t  *sd;
+
+    if (zone == NULL || key == NULL || key_len == 0 || key_len > 65535
+        || value == NULL || exptime < -1)
+    {
+        return NGX_ERROR;
+    }
+
+    ctx = zone->data;
+    hash = ngx_crc32_short((u_char *) key, key_len);
+
+    ngx_shmtx_lock(&ctx->shpool->mutex);
+
+    rc = ngx_http_lua_shdict_lookup(zone, hash, (u_char *) key, key_len, &sd);
+
+    if (rc != NGX_OK || sd->value_type != SHDICT_TSTRING
+        || sd->value_len != value_len
+        || ngx_memcmp(sd->data + key_len, value, value_len) != 0)
+    {
+        ngx_shmtx_unlock(&ctx->shpool->mutex);
+        return NGX_DECLINED;
+    }
+
+    if (exptime == -1) {
+        ngx_queue_remove(&sd->queue);
+
+        node = (ngx_rbtree_node_t *)
+                   ((u_char *) sd - offsetof(ngx_rbtree_node_t, color));
+
+        ngx_rbtree_delete(&ctx->sh->rbtree, node);
+        ngx_slab_free_locked(ctx->shpool, node);
+
+    } else if (exptime > 0) {
+        tp = ngx_timeofday();
+        sd->expires = (uint64_t) tp->sec * 1000 + tp->msec + (uint64_t) exptime;
+
+    } else {
+        sd->expires = 0;
+    }
+
+    ngx_shmtx_unlock(&ctx->shpool->mutex);
     return NGX_OK;
 }
 

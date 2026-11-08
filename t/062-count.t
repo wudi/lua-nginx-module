@@ -34,7 +34,7 @@ __DATA__
 --- request
 GET /test
 --- response_body
-ngx: 116
+ngx: 117
 --- no_error_log
 [error]
 
@@ -55,7 +55,7 @@ ngx: 116
 --- request
 GET /test
 --- response_body
-116
+117
 --- no_error_log
 [error]
 
@@ -83,7 +83,7 @@ GET /test
 --- request
 GET /test
 --- response_body
-n = 116
+n = 117
 --- no_error_log
 [error]
 
@@ -259,7 +259,7 @@ n = 10
 POST /test
 hello world
 --- response_body
-n = 6
+n = 9
 --- no_error_log
 [error]
 --- skip_eval: 3: $ENV{TEST_NGINX_USE_HTTP3}
@@ -284,7 +284,7 @@ n = 6
 --- request
 GET /test
 --- response_body
-n = 22
+n = 23
 --- no_error_log
 [error]
 
@@ -306,7 +306,7 @@ GET /t
 --- response_body_like: 404 Not Found
 --- error_code: 404
 --- error_log
-ngx. entry count: 116
+ngx. entry count: 117
 
 
 
@@ -460,7 +460,7 @@ worker: 5
 --- request
 GET /test
 --- response_body
-n = 16
+n = 21
 --- no_error_log
 [error]
 
@@ -481,7 +481,7 @@ n = 16
 --- request
 GET /test
 --- response_body
-n = 6
+n = 7
 --- no_error_log
 [error]
 
@@ -503,7 +503,7 @@ n = 6
                     n = n + 1
                 end
 
-                local ok, err = sock:send("HTTP/1.1 200 OK\\r\\nContent-Length: 6\\r\\n\\r\\nn = "..n.."\\n")
+                local ok, err = sock:send("HTTP/1.1 200 OK\\r\\nContent-Length: 7\\r\\n\\r\\nn = "..n.."\\n")
                 if not ok then
                     ngx.log(ngx.ERR, "failed to send: ", err)
                     return
@@ -513,7 +513,7 @@ n = 6
 --- request
 GET /test
 --- response_body
-n = 7
+n = 10
 --- no_error_log
 [error]
 --- skip_eval: 3:$ENV{TEST_NGINX_USE_HTTP3}

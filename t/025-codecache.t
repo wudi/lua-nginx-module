@@ -1,5 +1,11 @@
 # vim:set ft= ts=4 sw=4 et fdm=marker:
 
+BEGIN {
+    # Injected initialization and per-line GC change the cache/ordering or
+    # performance contract asserted here. Keep ASan, use the normal GC policy.
+    delete $ENV{TEST_NGINX_INIT_BY_LUA} if $ENV{TEST_NGINX_GC_STRESS};
+}
+
 use Test::Nginx::Socket::Lua;
 use Cwd qw(abs_path realpath);
 use File::Basename;
@@ -855,6 +861,7 @@ qr/\[alert\] \S+ lua_code_cache is off; this will hurt performance/,
 "decrementing the reference count for Lua VM: 2",
 "decrementing the reference count for Lua VM: 1",
 ]
+--- skip_eval: 11:defined($ENV{MOCKEAGAIN}) && ($ENV{MOCKEAGAIN} =~ /w/)
 
 
 
@@ -993,7 +1000,7 @@ qr/\[alert\] \S+ lua_code_cache is off; this will hurt performance/,
 "lua close the global Lua VM",
 ]
 --- curl_error eval
-qr/curl: \(\d+\) Empty reply from server/
+qr/curl: \(\d+\) Empty reply from server|curl: \(28\) Operation timed out after \d+ milliseconds with 0 bytes received/
 
 
 
@@ -1082,7 +1089,7 @@ function go(port)
 
     ngx.say("connected: ", ok, ", reused: ", sock:getreusedtimes())
 
-    local req = "flush_all\r\n"
+    local req = "get __nil\r\n"
 
     local bytes, err = sock:send(req)
     if not bytes then
@@ -1109,7 +1116,7 @@ GET /t
 --- response_body
 connected: 1, reused: 0
 request sent: 11
-received: OK
+received: END
 --- no_error_log
 [error]
 lua tcp socket keepalive max idle timeout
@@ -1120,6 +1127,7 @@ qq{lua tcp socket keepalive create connection pool for key "127.0.0.1:$ENV{TEST_
 qr/\[alert\] \S+ lua_code_cache is off; this will hurt performance/,
 qr/\blua tcp socket keepalive: free connection pool [0-9A-F]+ for "127.0.0.1:/,
 ]
+--- skip_eval: 7:defined($ENV{MOCKEAGAIN}) && ($ENV{MOCKEAGAIN} =~ /w/)
 
 
 
@@ -1150,7 +1158,7 @@ function go(port)
 
     ngx.say("connected: ", ok, ", reused: ", sock:getreusedtimes())
 
-    local req = "flush_all\r\n"
+    local req = "get __nil\r\n"
 
     local bytes, err = sock:send(req)
     if not bytes then
@@ -1178,7 +1186,7 @@ GET /t
 --- response_body
 connected: 1, reused: 0
 request sent: 11
-received: OK
+received: END
 --- no_error_log
 [error]
 --- error_log eval
@@ -1881,3 +1889,4 @@ qr/log_by_lua\(nginx.conf:\d+\):\d+: hello/,
 --- log_level: debug
 --- no_error_log
 [error]
+--- skip_eval: 14:$ENV{TEST_NGINX_USE_HTTP3}

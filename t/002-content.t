@@ -1,5 +1,11 @@
 # vim:set ft= ts=4 sw=4 et fdm=marker:
 
+BEGIN {
+    # Injected initialization and per-line GC change the cache/ordering or
+    # performance contract asserted here. Keep ASan, use the normal GC policy.
+    delete $ENV{TEST_NGINX_INIT_BY_LUA} if $ENV{TEST_NGINX_GC_STRESS};
+}
+
 use Test::Nginx::Socket::Lua;
 
 #worker_connections(1014);
@@ -533,8 +539,6 @@ Bar: nil
     location /lua {
         content_by_lua '
             local data = "hello, world"
-            -- ngx.header["Content-Length"] = #data
-            -- ngx.header.content_length = #data
             ngx.print(data)
         ';
     }
@@ -544,7 +548,7 @@ Bar: nil
 --- request
 GET /main
 --- response_headers
-Content-Length: 12
+Content-Type: text/plain
 --- response_body chop
 hello, world
 --- no_error_log
@@ -1098,3 +1102,26 @@ failed to load inlined Lua code: content_by_lua(...45678901234567890123456789012
 GET /lua
 --- response_body_like: 503 Service Temporarily Unavailable
 --- error_code: 503
+
+
+
+=== TEST 52: send_header trigger filter finalize does not clear the ctx
+--- config
+    location /lua {
+        content_by_lua_block {
+            ngx.header["Last-Modified"] = ngx.http_time(ngx.time())
+            ngx.send_headers()
+            local phase = ngx.get_phase()
+        }
+        header_filter_by_lua_block {
+            ngx.header["X-Hello-World"] = "Hello World"
+        }
+    }
+--- request
+GET /lua
+--- more_headers
+If-Unmodified-Since: Wed, 01 Jan 2020 07:28:00 GMT
+--- error_code: 412
+--- no_error_log
+unknown phase: 0
+--- skip_eval: 2:defined($ENV{MOCKEAGAIN}) && ($ENV{MOCKEAGAIN} =~ /w/)

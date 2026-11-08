@@ -85,23 +85,6 @@ ngx_http_lua_ngx_req_read_body(lua_State *L)
         return luaL_error(L, "request object not found");
     }
 
-/* http2 read body may break http2 stream process */
-#if (NGX_HTTP_V2)
-    if (r->main->stream && r->headers_in.content_length_n < 0) {
-        return luaL_error(L, "http2 requests are not supported"
-                          " without content-length header");
-    }
-#endif
-
-#if (NGX_HTTP_V3)
-    if (r->http_version == NGX_HTTP_VERSION_30
-        && r->headers_in.content_length_n < 0)
-    {
-        return luaL_error(L, "http3 requests are not supported"
-                          " without content-length header");
-    }
-#endif
-
     r->request_body_in_single_buf = 1;
     r->request_body_in_persistent_file = 1;
     r->request_body_in_clean_file = 1;
@@ -120,6 +103,7 @@ ngx_http_lua_ngx_req_read_body(lua_State *L)
     ngx_http_lua_check_context(L, ctx, NGX_HTTP_LUA_CONTEXT_REWRITE
                                | NGX_HTTP_LUA_CONTEXT_SERVER_REWRITE
                                | NGX_HTTP_LUA_CONTEXT_ACCESS
+                               | NGX_HTTP_LUA_CONTEXT_PRECONTENT
                                | NGX_HTTP_LUA_CONTEXT_CONTENT);
 
     coctx = ctx->cur_co_ctx;
@@ -246,15 +230,21 @@ ngx_http_lua_ngx_req_get_body_data(lua_State *L)
 {
     ngx_http_request_t          *r;
     int                          n;
-    size_t                       len;
+    size_t                       len, max;
+    size_t                       size, rest;
     ngx_chain_t                 *cl;
     u_char                      *p;
     u_char                      *buf;
 
     n = lua_gettop(L);
 
-    if (n != 0) {
-        return luaL_error(L, "expecting 0 arguments but seen %d", n);
+    if (n != 0 && n != 1) {
+        return luaL_error(L, "expecting 0 or 1 arguments but seen %d", n);
+    }
+
+    max = 0;
+    if (n == 1) {
+        max = (size_t) luaL_checknumber(L, 1);
     }
 
     r = ngx_http_lua_get_req(L);
@@ -282,6 +272,7 @@ ngx_http_lua_ngx_req_get_body_data(lua_State *L)
             return 1;
         }
 
+        len = (max > 0 && len > max) ? max : len;
         lua_pushlstring(L, (char *) cl->buf->pos, len);
         return 1;
     }
@@ -292,7 +283,13 @@ ngx_http_lua_ngx_req_get_body_data(lua_State *L)
 
     for (; cl; cl = cl->next) {
         dd("body chunk len: %d", (int) ngx_buf_size(cl->buf));
-        len += cl->buf->last - cl->buf->pos;
+        size = cl->buf->last - cl->buf->pos;
+        if (max > 0 && (len + size > max)) {
+            len = max;
+            break;
+        }
+
+        len += size;
     }
 
     if (len == 0) {
@@ -303,8 +300,15 @@ ngx_http_lua_ngx_req_get_body_data(lua_State *L)
     buf = (u_char *) lua_newuserdata(L, len);
 
     p = buf;
-    for (cl = r->request_body->bufs; cl; cl = cl->next) {
-        p = ngx_copy(p, cl->buf->pos, cl->buf->last - cl->buf->pos);
+    rest = len;
+    for (cl = r->request_body->bufs; cl != NULL && rest > 0; cl = cl->next) {
+        size = ngx_buf_size(cl->buf);
+        if (size > rest) { /* reach limit*/
+            size = rest;
+        }
+
+        p = ngx_copy(p, cl->buf->pos, size);
+        rest -= size;
     }
 
     lua_pushlstring(L, (char *) buf, len);
@@ -328,23 +332,6 @@ ngx_http_lua_ngx_req_get_body_file(lua_State *L)
     if (r == NULL) {
         return luaL_error(L, "request object not found");
     }
-
-/* http2 read body may break http2 stream process */
-#if (NGX_HTTP_V2)
-    if (r->main->stream && r->headers_in.content_length_n < 0) {
-        return luaL_error(L, "http2 requests are not supported"
-                          " without content-length header");
-    }
-#endif
-
-#if (NGX_HTTP_V3)
-    if (r->http_version == NGX_HTTP_VERSION_30
-        && r->headers_in.content_length_n < 0)
-    {
-        return luaL_error(L, "http3 requests are not supported"
-                          " without content-length header");
-    }
-#endif
 
     ngx_http_lua_check_fake_request(L, r);
 

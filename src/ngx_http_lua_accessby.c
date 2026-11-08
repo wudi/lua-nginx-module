@@ -64,8 +64,8 @@ ngx_http_lua_access_handler(ngx_http_request_t *r)
 
             tmp = *cur_ph;
 
-            memmove(cur_ph, cur_ph + 1,
-                    (last_ph - cur_ph) * sizeof (ngx_http_phase_handler_t));
+            ngx_memmove(cur_ph, cur_ph + 1,
+                        (last_ph - cur_ph) * sizeof(ngx_http_phase_handler_t));
 
             *last_ph = tmp;
 
@@ -95,6 +95,7 @@ ngx_http_lua_access_handler(ngx_http_request_t *r)
 
     dd("entered? %d", (int) ctx->entered_access_phase);
 
+
     if (ctx->entered_access_phase) {
         dd("calling wev handler");
         rc = ctx->resume_handler(r);
@@ -105,7 +106,9 @@ ngx_http_lua_access_handler(ngx_http_request_t *r)
         }
 
         if (rc == NGX_OK) {
-            if (r->header_sent) {
+            if (r->header_sent
+                || (r->headers_out.status != 0 && ctx->out != NULL))
+            {
                 dd("header already sent");
 
                 /* response header was already generated in access_by_lua*,
@@ -137,26 +140,6 @@ ngx_http_lua_access_handler(ngx_http_request_t *r)
     }
 
     if (llcf->force_read_body && !ctx->read_body_done) {
-
-#if (NGX_HTTP_V2)
-        if (r->main->stream && r->headers_in.content_length_n < 0) {
-            ngx_log_error(NGX_LOG_WARN, r->connection->log, 0,
-                          "disable lua_need_request_body, since "
-                          "http2 read_body may break http2 stream process");
-            goto done;
-        }
-#endif
-
-#if (NGX_HTTP_V3)
-        if (r->http_version == NGX_HTTP_VERSION_30
-            && r->headers_in.content_length_n < 0)
-        {
-            ngx_log_error(NGX_LOG_WARN, r->connection->log, 0,
-                          "disable lua_need_request_body, since "
-                          "http2 read_body may break http2 stream process");
-            goto done;
-        }
-#endif
         r->request_body_in_single_buf = 1;
         r->request_body_in_persistent_file = 1;
         r->request_body_in_clean_file = 1;
@@ -174,8 +157,6 @@ ngx_http_lua_access_handler(ngx_http_request_t *r)
         }
     }
 
-done:
-
     dd("calling access handler");
     return llcf->access_handler(r);
 }
@@ -191,6 +172,10 @@ ngx_http_lua_access_handler_inline(ngx_http_request_t *r)
     llcf = ngx_http_get_module_loc_conf(r, ngx_http_lua_module);
 
     L = ngx_http_lua_get_lua_vm(r, NULL);
+
+    if (!llcf->enable_code_cache) {
+        llcf->access_src_ref = LUA_REFNIL;
+    }
 
     /*  load Lua inline script (w/ cache) sp = 1 */
     rc = ngx_http_lua_cache_loadbuffer(r->connection->log, L,
@@ -232,6 +217,10 @@ ngx_http_lua_access_handler_file(ngx_http_request_t *r)
     }
 
     L = ngx_http_lua_get_lua_vm(r, NULL);
+
+    if (!llcf->enable_code_cache) {
+        llcf->access_src_ref = LUA_REFNIL;
+    }
 
     /*  load Lua script file (w/ cache)        sp = 1 */
     rc = ngx_http_lua_cache_loadfile(r->connection->log, L, script_path,
@@ -391,7 +380,8 @@ ngx_http_lua_access_by_chunk(lua_State *L, ngx_http_request_t *r)
 
 #if 1
     if (rc == NGX_OK) {
-        if (r->header_sent) {
+        if (r->header_sent || (r->headers_out.status != 0 && ctx->out != NULL))
+        {
             dd("header already sent");
 
             /* response header was already generated in access_by_lua*,

@@ -1090,7 +1090,7 @@ A zero value of `<num>` disables the cache.
 
 Note that this feature requires OpenResty's LuaJIT with the new C API `lua_resetthread`.
 
-This feature was first introduced in verson `v0.10.9`.
+This feature was first introduced in version `v0.10.9`.
 
 == lua_regex_cache_max_entries ==
 
@@ -1490,6 +1490,61 @@ The Lua code cache can be temporarily disabled during development by
 switching [[#lua_code_cache|lua_code_cache]] <code>off</code> in <code>nginx.conf</code> to avoid reloading Nginx.
 
 This directive requires the [https://github.com/simplresty/ngx_devel_kit ngx_devel_kit] module.
+
+== precontent_by_lua_block ==
+
+'''syntax:''' ''precontent_by_lua_block { lua-script }''
+
+'''context:''' ''http, server, location, location if''
+
+'''phase:''' ''pre-content tail''
+
+Acts as a precontent phase handler and executes Lua code string specified in <code>{ <lua-script }</code> for every request.
+The Lua code may make [[#Nginx API for Lua|API calls]] and is executed as a new spawned coroutine in an independent global environment (i.e. a sandbox).
+
+Note that this handler always runs *after* the standard [[HttpMirrorModule]] and [[HttpTryFilesModule]]. For example:
+
+<geshi lang="nginx">
+    location /images/ {
+        try_files $uri /images/default.gif;
+        precontent_by_lua_block {
+            ngx.log(ngx.NOTICE, "file found")
+        }
+    }
+
+    location = /images/default.gif {
+        expires 30s;
+        precontent_by_lua_block {
+            ngx.log(ngx.NOTICE, "file not found, use default.gif instead")
+        }
+    }
+</geshi>
+
+That is, if a request for /images/foo.jpg comes in and the file does not exist, the request will be internally redirected to /images/default.gif before [[#precontent_by_lua_block|precontent_by_lua_block]], and then the [[#precontent_by_lua_block|precontent_by_lua_block]] in new location will run and log "file not found, use default.gif instead".
+
+You can use [[#precontent_by_lua_block|precontent_by_lua_block]] to perform some preparatory functions after the access phase handler but before the proxy or other content handler. Especially some functions that cannot be performed in [[#balancer_by_lua_block|balancer_by_lua_block]].
+
+You can use the [[#precontent_by_lua_no_postpone|precontent_by_lua_no_postpone]] directive to control when to run this handler inside the "precontent" request-processing phase of Nginx.
+
+== precontent_by_lua_file ==
+
+'''syntax:''' ''precontent_by_lua_file <path-to-lua-script-file>''
+
+'''context:''' ''http, server, location, location if''
+
+'''phase:''' ''precontent tail''
+
+Equivalent to [[#precontent_by_lua_block|precontent_by_lua_block]], except that the file specified by <code><path-to-lua-script-file></code> contains the Lua code, or, as from the <code>v0.5.0rc32</code> release, the [[#LuaJIT bytecode support|LuaJIT bytecode]] to be executed.
+
+Nginx variables can be used in the <code><path-to-lua-script-file></code> string to provide flexibility. This however carries some risks and is not ordinarily recommended.
+
+When a relative path like <code>foo/bar.lua</code> is given, they will be turned into the absolute path relative to the <code>server prefix</code> path determined by the <code>-p PATH</code> command-line option while starting the Nginx server.
+
+When the Lua code cache is turned on (by default), the user code is loaded once at the first request and cached
+and the Nginx config must be reloaded each time the Lua source file is modified.
+The Lua code cache can be temporarily disabled during development by switching [[#lua_code_cache|lua_code_cache]] <code>off</code> in <code>nginx.conf</code> to avoid repeatedly reloading Nginx.
+
+Nginx variables are supported in the file path for dynamic dispatch just as in [[#content_by_lua_file|content_by_lua_file]].
 
 == content_by_lua ==
 
@@ -2288,6 +2343,26 @@ When a relative path like <code>foo/bar.lua</code> is given, they will be turned
 
 This directive was first introduced in the <code>v0.10.0</code> release.
 
+== balancer_keepalive ==
+
+'''syntax:''' ''balancer_keepalive <total-connections>''
+
+'''context:''' ''upstream''
+
+'''phase:''' ''loading-config''
+
+The <code>total-connections</code> parameter sets the maximum number of idle
+keepalive connections to upstream servers that are preserved in the cache of
+each worker process. When this number is exceeded, the least recently used
+connections are closed.
+
+It should be particularly noted that the keepalive directive does not limit the
+total number of connections to upstream servers that an nginx worker process
+can open. The connections parameter should be set to a number small enough to
+let upstream servers process new incoming connections as well.
+
+This directive was first introduced in the <code>v0.10.21</code> release.
+
 == lua_need_request_body ==
 
 '''syntax:''' ''lua_need_request_body <on|off>''
@@ -2905,6 +2980,16 @@ This directive was first introduced in the <code>v0.9.11</code> release.
 
 See also [[#lua_ssl_certificate|lua_ssl_certificate]], [[#lua_ssl_certificate_key|lua_ssl_certificate_key]] and [[#lua_ssl_trusted_certificate|lua_ssl_trusted_certificate]].
 
+== lua_ssl_key_log ==
+
+'''syntax:''' ''lua_ssl_key_log <file>''
+
+'''default:''' ''none''
+
+'''context:''' ''http, server, location''
+
+Enables logging of client connection SSL keys in the [[#tcpsock:sslhandshake|tcpsock:sslhandshake]] method and specifies the path to the key log file. Keys are logged in the SSLKEYLOGFILE format compatible with Wireshark.
+
 == lua_ssl_conf_command ==
 
 '''syntax:''' ''lua_ssl_conf_command <command>''
@@ -2930,6 +3015,19 @@ Note though that configuring OpenSSL directly with <code>lua_ssl_conf_command</c
 
 This directive was first introduced in the <code>v0.10.21</code> release.
 
+== lua_upstream_skip_openssl_default_verify ==
+
+'''syntax:''' ''lua_upstream_skip_openssl_default_verify on|off''
+
+'''default:''' ''lua_upstream_skip_openssl_default_verify off''
+
+'''context:''' ''location, location-if''
+
+When using proxy_ssl_verify_by_lua directive, `lua_upstream_skip_openssl_default_verify` controls whether to skip default openssl's verify function, that means using pure Lua code to verify upstream server certificate.
+
+This directive is turned <code>off</code> by default.
+
+[Back to TOC](#directives)
 
 
 == lua_http10_buffering ==
@@ -2973,6 +3071,16 @@ This directive was first introduced in the <code>v0.5.0rc29</code> release.
 Controls whether or not to disable postponing [[#access_by_lua|access_by_lua*]] directives to run at the end of the <code>access</code> request-processing phase. By default, this directive is turned off and the Lua code is postponed to run at the end of the <code>access</code> phase.
 
 This directive was first introduced in the <code>v0.9.20</code> release.
+
+== precontent_by_lua_no_postpone ==
+
+'''syntax:''' ''precontent_by_lua_no_postpone on|off''
+
+'''default:''' ''precontent_by_lua_no_postpone off''
+
+'''context:''' ''http''
+
+Controls whether or not to disable postponing [[#precontent_by_lua_block|precontent_by_lua_block*]] directives to run at the end of the <code>precontent</code> request-processing phase. By default, this directive is turned off and the Lua code is postponed to run at the end of the <code>precontent</code> phase.
 
 == lua_transform_underscores_in_response_headers ==
 
@@ -4587,11 +4695,13 @@ See also [[#ngx.req.read_body|ngx.req.read_body]].
 
 == ngx.req.get_body_data ==
 
-'''syntax:''' ''data = ngx.req.get_body_data()''
+'''syntax:''' ''data = ngx.req.get_body_data(max_bytes?)''
 
 '''context:''' ''rewrite_by_lua*, access_by_lua*, content_by_lua*, log_by_lua*''
 
 Retrieves in-memory request body data. It returns a Lua string rather than a Lua table holding all the parsed query arguments. Use the [[#ngx.req.get_post_args|ngx.req.get_post_args]] function instead if a Lua table is required.
+
+The optional <code>max_bytes</code> function argument can be used when you don't need the entire body.
 
 This function returns <code>nil</code> if
 
@@ -4635,13 +4745,15 @@ See also [[#ngx.req.get_body_data|ngx.req.get_body_data]].
 
 '''syntax:''' ''ngx.req.set_body_data(data)''
 
-'''context:''' ''rewrite_by_lua*, access_by_lua*, content_by_lua*''
+'''context:''' ''rewrite_by_lua*, access_by_lua*, content_by_lua*, balancer_by_lua*''
 
 Set the current request's request body using the in-memory data specified by the <code>data</code> argument.
 
 If the request body has not been read yet, call [[#ngx.req.read_body|ngx.req.read_body]] first (or turn on [[#lua_need_request_body|lua_need_request_body]] to force this module to read the request body. This is not recommended however). Additionally, the request body must not have been previously discarded by [[#ngx.req.discard_body|ngx.req.discard_body]].
 
 Whether the previous request body has been read into memory or buffered into a disk file, it will be freed or the disk file will be cleaned up immediately, respectively.
+
+Note that this function is also work for balancer phase but it needs to call [https://github.com/openresty/lua-resty-core/blob/master/lib/ngx/balancer.md#recreate_request balancer.recreate_request] to make the change take effect after set the request body data or headers.
 
 This function was first introduced in the <code>v0.3.1rc18</code> release.
 
@@ -4651,7 +4763,7 @@ See also [[#ngx.req.set_body_file|ngx.req.set_body_file]].
 
 '''syntax:''' ''ngx.req.set_body_file(file_name, auto_clean?)''
 
-'''context:''' ''rewrite_by_lua*, access_by_lua*, content_by_lua*''
+'''context:''' ''rewrite_by_lua*, access_by_lua*, content_by_lua*, balancer_by_lua*''
 
 Set the current request's request body using the in-file data specified by the <code>file_name</code> argument.
 
@@ -4662,6 +4774,8 @@ If the optional <code>auto_clean</code> argument is given a <code>true</code> va
 Please ensure that the file specified by the <code>file_name</code> argument exists and is readable by an Nginx worker process by setting its permission properly to avoid Lua exception errors.
 
 Whether the previous request body has been read into memory or buffered into a disk file, it will be freed or the disk file will be cleaned up immediately, respectively.
+
+Note that this function is also work for balancer phase but it needs to call [https://github.com/openresty/lua-resty-core/blob/master/lib/ngx/balancer.md#recreate_request balancer.recreate_request] to make the change take effect after set the request body data or headers.
 
 This function was first introduced in the <code>v0.3.1rc18</code> release.
 
@@ -4739,6 +4853,7 @@ Returns a read-only cosocket object that wraps the downstream connection. Only [
 
 In case of error, <code>nil</code> will be returned as well as a string describing the error.
 
+'''Note:''' This method will block while waiting for client request body to be fully received. Block time depends on the [http://nginx.org/en/docs/http/ngx_http_core_module.html#client_body_timeout client_body_timeout] directive and maximum body size specified by the [http://nginx.org/en/docs/http/ngx_http_core_module.html#client_max_body_size client_max_body_size] directive. If read timeout occurs or client body size exceeds the defined limit, this function will not return and <code>408 Request Time-out</code> or <code>413 Request Entity Too Large</code> response will be returned to the client instead.
 The socket object returned by this method is usually used to read the current request's body in a streaming fashion. Do not turn on the [[#lua_need_request_body|lua_need_request_body]] directive, and do not mix this call with [[#ngx.req.read_body|ngx.req.read_body]] and [[#ngx.req.discard_body|ngx.req.discard_body]].
 
 If any request body data has been pre-read into the Nginx core request header buffer, the resulting cosocket object will take care of this to avoid potential data loss resulting from such pre-reading.
@@ -5229,7 +5344,21 @@ Since the <code>0.9.16</code> release, an optional boolean-typed <code>no_paddin
 
 '''context:''' ''set_by_lua*, rewrite_by_lua*, access_by_lua*, content_by_lua*, header_filter_by_lua*, body_filter_by_lua*, log_by_lua*, ngx.timer.*, balancer_by_lua*, ssl_certificate_by_lua*, ssl_session_fetch_by_lua*, ssl_session_store_by_lua*, ssl_client_hello_by_lua*''
 
-Decodes the <code>str</code> argument as a base64 digest to the raw form. Returns <code>nil</code> if <code>str</code> is not well formed.
+Decodes the <code>str</code> argument as a base64 digest to the raw form.
+The <code>str</code> should be standard 'base64' encoding for RFC 3548 or RFC 4648, and will returns <code>nil</code> if is not well formed or any characters not in the base encoding alphabet.
+
+== ngx.decode_base64mime ==
+'''syntax:''' ''newstr = ngx.decode_base64mime(str)''
+
+'''context:''' ''set_by_lua*, rewrite_by_lua*, access_by_lua*, content_by_lua*, header_filter_by_lua*, body_filter_by_lua*, log_by_lua*, ngx.timer.*, balancer_by_lua*, ssl_certificate_by_lua*, ssl_session_fetch_by_lua*, ssl_session_store_by_lua*''
+
+'''requires:''' <code>resty.core.base64</code> or <code>resty.core</code>
+
+Decodes the <code>str</code> argument as a base64 digest to the raw form.
+The <code>str</code> follows base64 transfer encoding for MIME (RFC 2045), and will discard characters outside the base encoding alphabet.
+Returns <code>nil</code> if <code>str</code> is not well formed.
+
+ '''Note:''' This method requires the <code>resty.core.base64</code> or <code>resty.core</code> modules from the [https://github.com/openresty/lua-resty-core lua-resty-core] library.
 
 == ngx.crc32_short ==
 
@@ -5425,7 +5554,7 @@ Returns a formatted string can be used as the cookie expiration time. The parame
 
 '''context:''' ''init_worker_by_lua*, set_by_lua*, rewrite_by_lua*, access_by_lua*, content_by_lua*, header_filter_by_lua*, body_filter_by_lua*, log_by_lua*, ngx.timer.*, balancer_by_lua*, ssl_certificate_by_lua*, ssl_session_fetch_by_lua*, ssl_session_store_by_lua*, exit_worker_by_lua*, ssl_client_hello_by_lua*''
 
-Returns a formated string can be used as the http header time (for example, being used in <code>Last-Modified</code> header). The parameter <code>sec</code> is the time stamp in seconds (like those returned from [[#ngx.time|ngx.time]]).
+Returns a formatted string can be used as the http header time (for example, being used in <code>Last-Modified</code> header). The parameter <code>sec</code> is the time stamp in seconds (like those returned from [[#ngx.time|ngx.time]]).
 
 <geshi lang="nginx">
     ngx.say(ngx.http_time(1290079655))

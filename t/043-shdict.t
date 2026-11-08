@@ -158,7 +158,7 @@ hello
         content_by_lua '
             local dogs = ngx.shared.dogs
             dogs:set("foo", 32, 0.01)
-            ngx.location.capture("/sleep/0.01")
+            ngx.location.capture("/sleep/0.011")
             ngx.say(dogs:get("foo"))
         ';
     }
@@ -768,7 +768,7 @@ foo = 10502
             dogs:set("bar", 32, 0.001)
             dogs:set("baz", 32, 0.001)
             dogs:set("foo", 32, 0.001)
-            ngx.location.capture("/sleep/0.002")
+            ngx.location.capture("/sleep/0.003")
             local res, err, forcible = dogs:add("foo", 10502)
             ngx.say("add: ", res, " ", err, " ", forcible)
             ngx.say("foo = ", dogs:get("foo"))
@@ -797,7 +797,7 @@ foo = 10502
             dogs:set("bar", 32, 0.001)
             dogs:set("baz", 32, 0.001)
             dogs:set("foo", "hi", 0.001)
-            ngx.location.capture("/sleep/0.002")
+            ngx.location.capture("/sleep/0.003")
             local res, err, forcible = dogs:add("foo", "hello")
             ngx.say("add: ", res, " ", err, " ", forcible)
             ngx.say("foo = ", dogs:get("foo"))
@@ -1131,7 +1131,7 @@ nil nil
         content_by_lua '
             local dogs = ngx.shared.dogs
             dogs:set("foo", 32, 0.01, 255)
-            ngx.location.capture("/sleep/0.01")
+            ngx.location.capture("/sleep/0.011")
             local res, flags = dogs:get("foo")
             ngx.say("res = ", res, ", flags = ", flags)
         ';

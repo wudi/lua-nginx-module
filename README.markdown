@@ -45,6 +45,7 @@ Table of Contents
     * [Missing data on short circuited requests](#missing-data-on-short-circuited-requests)
 * [TODO](#todo)
 * [Changes](#changes)
+* [Build And Test](#build-and-test)
 * [Test Suite](#test-suite)
 * [Copyright and License](#copyright-and-license)
 * [See Also](#see-also)
@@ -63,8 +64,8 @@ Version
 =======
 
 This document describes ngx_lua
-[v0.10.25](https://github.com/openresty/lua-nginx-module/tags), which was released
-on 19 June 2023.
+[v0.10.29](https://github.com/openresty/lua-nginx-module/tags), which was released
+on Oct 24, 2025.
 
 Videos
 ======
@@ -269,7 +270,7 @@ memory use. Request contexts are segregated using lightweight Lua coroutines.
 Loaded Lua modules persist in the Nginx worker process level resulting in a
 small memory footprint in Lua even when under heavy loads.
 
-This module is plugged into Nginx's "http" subsystem so it can only speaks
+This module is plugged into Nginx's "http" subsystem so it can only speak
 downstream communication protocols in the HTTP family (HTTP 0.9/1.0/1.1/2.0,
 WebSockets, etc...).  If you want to do generic TCP communications with the
 downstream clients, then you should use the
@@ -283,7 +284,7 @@ Typical Uses
 
 Just to name a few:
 
-* Mashup'ing and processing outputs of various Nginx upstream outputs (proxy, drizzle, postgres, redis, memcached, and etc) in Lua,
+* Mashup'ing and processing outputs of various Nginx upstream outputs (proxy, drizzle, postgres, redis, memcached, etc.) in Lua,
 * doing arbitrarily complex access control and security checks in Lua before requests actually reach the upstream backends,
 * manipulating response headers in an arbitrary way (by Lua)
 * fetching backend information from external storage backends (like redis, memcached, mysql, postgresql) and use that information to choose which upstream backend to access on-the-fly,
@@ -307,6 +308,11 @@ Nginx Compatibility
 
 The latest version of this module is compatible with the following versions of Nginx:
 
+* 1.31.x  (last tested: 1.31.2)
+* 1.31.x  (last tested: 1.31.1)
+* 1.29.x  (last tested: 1.29.8)
+* 1.29.x  (last tested: 1.29.2)
+* 1.27.x  (last tested: 1.27.1)
 * 1.25.x  (last tested: 1.25.1)
 * 1.21.x  (last tested: 1.21.4)
 * 1.19.x  (last tested: 1.19.3)
@@ -337,7 +343,7 @@ It is discouraged to build this module with Nginx yourself since it is tricky
 to set up exactly right.
 
 Note that Nginx, LuaJIT, and OpenSSL official releases have various limitations
-and long standing bugs that can cause some of this module's features to be
+and long-standing bugs that can cause some of this module's features to be
 disabled, not work properly, or run slower. Official OpenResty releases are
 recommended because they bundle [OpenResty's optimized LuaJIT 2.1 fork](https://github.com/openresty/luajit2) and
 [Nginx/OpenSSL
@@ -421,7 +427,7 @@ While building this module either via OpenResty or with the Nginx core, you can 
 * `NGX_LUA_USE_ASSERT`
 	When defined, will enable assertions in the ngx_lua C code base. Recommended for debugging or testing builds. It can introduce some (small) runtime overhead when enabled. This macro was first introduced in the `v0.9.10` release.
 * `NGX_LUA_ABORT_AT_PANIC`
-	When the LuaJIT VM panics, ngx_lua will instruct the current nginx worker process to quit gracefully by default. By specifying this C macro, ngx_lua will abort the current nginx worker process (which usually result in a core dump file) immediately. This option is useful for debugging VM panics. This option was first introduced in the `v0.9.8` release.
+	When the LuaJIT VM panics, ngx_lua will instruct the current nginx worker process to quit gracefully by default. By specifying this C macro, ngx_lua will abort the current nginx worker process (which usually results in a core dump file) immediately. This option is useful for debugging VM panics. This option was first introduced in the `v0.9.8` release.
 
 To enable one or more of these macros, just pass extra C compiler options to the `./configure` script of either Nginx or OpenResty. For instance,
 
@@ -966,7 +972,6 @@ TODO
 * cosocket: add support in the context of [init_by_lua*](#init_by_lua).
 * cosocket: review and merge aviramc's [patch](https://github.com/openresty/lua-nginx-module/pull/290) for adding the `bsdrecv` method.
 * cosocket: add configure options for different strategies of handling the cosocket connection exceeding in the pools.
-* review and apply vadim-pavlov's patch for [ngx.location.capture](#ngxlocationcapture)'s `extra_headers` option
 * use `ngx_hash_t` to optimize the built-in header look-up process for [ngx.req.set_header](#ngxreqset_header), and etc.
 * add `ignore_resp_headers`, `ignore_resp_body`, and `ignore_resp` options to [ngx.location.capture](#ngxlocationcapture) and [ngx.location.capture_multi](#ngxlocationcapture_multi) methods, to allow micro performance tuning on the user side.
 * add automatic Lua code time slicing support by yielding and resuming the Lua VM actively via Lua's debug hooks.
@@ -982,6 +987,23 @@ The changes made in every release of this module are listed in the change logs o
 <https://openresty.org/#Changes>
 
 [Back to TOC](#table-of-contents)
+
+Build And Test
+==============
+
+This module uses `.travis.yml` as the CI configuration.
+You can always check `.travis.yml` for the latest CI configuration.
+
+For developers, you need to run tests locally. You can use `util/run-ci.sh`
+to easily set up the environment and execute the test suite.
+
+To run the Test from the beginning:
+
+```shell
+git clone https://github.com/openresty/lua-nginx-module.git
+cd lua-nginx-module
+bash util/run-ci.sh
+```
 
 Test Suite
 ==========
@@ -1012,7 +1034,7 @@ The order in which these modules are added during configuration is important bec
 filtering chain determines the final output, for example. The correct adding order is shown above.
 
 * 3rd-party Lua libraries:
-	* [lua-cjson](http://www.kyne.com.au/~mark/software/lua-cjson.php)
+	* [lua-cjson](https://www.kyne.au/~mark/software/lua-cjson.php)
 
 * Applications:
 	* mysql: create database 'ngx_test', grant all privileges to user 'ngx_test', password is 'ngx_test'
@@ -1027,7 +1049,6 @@ To run the whole test suite in the default testing mode:
     export PATH=/path/to/your/nginx/sbin:$PATH
     prove -I/path/to/test-nginx/lib -r t
 
-
 To run specific test files:
 
     cd /path/to/lua-nginx-module
@@ -1036,6 +1057,27 @@ To run specific test files:
 
 
 To run a specific test block in a particular test file, add the line `--- ONLY` to the test block you want to run, and then use the `prove` utility to run that `.t` file.
+
+The cosocket queue regression in `t/196-socket-keepalive-queue.t` checks
+handoff, cancellation, and timeout recovery in the rewrite, access, and content
+phases. Its stress case uses a fixed random seed and runs five rounds for each
+pool size from one to three. Increase `TEST_NGINX_SOCKET_POOL_ROUNDS` for a
+longer run in one worker:
+
+    TEST_NGINX_SOCKET_POOL_ROUNDS=300 prove -I. -I/path/to/test-nginx/lib t/196-socket-keepalive-queue.t
+
+Each round waits for all surviving operations, forces garbage collection, and
+checks that the pool admits exactly its configured number of connections.
+The test also supports the HTTP/2, HTTP/3, and Valgrind modes of Test::Nginx;
+its request and QUIC idle timeouts increase with the round count.
+
+The request cleanup regression in `t/197-coroutine-request-cleanup.t` checks
+that client disconnects and `ngx.exit` cancel pending sleep timers owned by
+ordinary coroutines, including nesting across coroutine context list parts.
+It uses its own HTTP listener and shared-dictionary/semaphore barriers, so no
+Redis or memcached service is required. A debug build checks the exact timer
+cleanup log; an ASan build also detects dangling timer nodes after request
+memory is freed.
 
 There are also various testing modes based on mockeagain, valgrind, and etc. Refer to the [Test::Nginx documentation](https://search.cpan.org/perldoc?Test::Nginx) for more details for various advanced testing modes. See also the test reports for the Nginx test cluster running on Amazon EC2: <https://qa.openresty.org>.
 
@@ -1048,7 +1090,7 @@ This module is licensed under the BSD license.
 
 Copyright (C) 2009-2017, by Xiaozhe Wang (chaoslawful) <chaoslawful@gmail.com>.
 
-Copyright (C) 2009-2019, by Yichun "agentzh" Zhang (章亦春) <agentzh@gmail.com>, OpenResty Inc.
+Copyright (C) 2009-2025, by Yichun "agentzh" Zhang (章亦春) <agentzh@gmail.com>, OpenResty Inc.
 
 All rights reserved.
 
@@ -1122,6 +1164,8 @@ Directives
 * [set_by_lua](#set_by_lua)
 * [set_by_lua_block](#set_by_lua_block)
 * [set_by_lua_file](#set_by_lua_file)
+* [precontent_by_lua_block](#precontent_by_lua_block)
+* [precontent_by_lua_file](#precontent_by_lua_file)
 * [content_by_lua](#content_by_lua)
 * [content_by_lua_block](#content_by_lua_block)
 * [content_by_lua_file](#content_by_lua_file)
@@ -1144,6 +1188,7 @@ Directives
 * [log_by_lua_file](#log_by_lua_file)
 * [balancer_by_lua_block](#balancer_by_lua_block)
 * [balancer_by_lua_file](#balancer_by_lua_file)
+* [balancer_keepalive](#balancer_keepalive)
 * [lua_need_request_body](#lua_need_request_body)
 * [ssl_client_hello_by_lua_block](#ssl_client_hello_by_lua_block)
 * [ssl_client_hello_by_lua_file](#ssl_client_hello_by_lua_file)
@@ -1153,6 +1198,10 @@ Directives
 * [ssl_session_fetch_by_lua_file](#ssl_session_fetch_by_lua_file)
 * [ssl_session_store_by_lua_block](#ssl_session_store_by_lua_block)
 * [ssl_session_store_by_lua_file](#ssl_session_store_by_lua_file)
+* [proxy_ssl_certificate_by_lua_block](#proxy_ssl_certificate_by_lua_block)
+* [proxy_ssl_certificate_by_lua_file](#proxy_ssl_certificate_by_lua_file)
+* [proxy_ssl_verify_by_lua_block](#proxy_ssl_verify_by_lua_block)
+* [proxy_ssl_verify_by_lua_file](#proxy_ssl_verify_by_lua_file)
 * [lua_shared_dict](#lua_shared_dict)
 * [lua_socket_connect_timeout](#lua_socket_connect_timeout)
 * [lua_socket_send_timeout](#lua_socket_send_timeout)
@@ -1169,10 +1218,13 @@ Directives
 * [lua_ssl_certificate_key](#lua_ssl_certificate_key)
 * [lua_ssl_trusted_certificate](#lua_ssl_trusted_certificate)
 * [lua_ssl_verify_depth](#lua_ssl_verify_depth)
+* [lua_ssl_key_log](#lua_ssl_key_log)
 * [lua_ssl_conf_command](#lua_ssl_conf_command)
+* [lua_upstream_skip_openssl_default_verify](#lua_upstream_skip_openssl_default_verify)
 * [lua_http10_buffering](#lua_http10_buffering)
 * [rewrite_by_lua_no_postpone](#rewrite_by_lua_no_postpone)
 * [access_by_lua_no_postpone](#access_by_lua_no_postpone)
+* [precontent_by_lua_no_postpone](#precontent_by_lua_no_postpone)
 * [lua_transform_underscores_in_response_headers](#lua_transform_underscores_in_response_headers)
 * [lua_check_client_abort](#lua_check_client_abort)
 * [lua_max_pending_timers](#lua_max_pending_timers)
@@ -1184,7 +1236,7 @@ Directives
 The basic building blocks of scripting Nginx with Lua are directives. Directives are used to specify when the user Lua code is run and
 how the result will be used. Below is a diagram showing the order in which directives are executed.
 
-![Lua Nginx Modules Directives](https://cloud.githubusercontent.com/assets/2137369/15272097/77d1c09e-1a37-11e6-97ef-d9767035fc3e.png)
+![Lua Nginx Modules Directives](./doc/images/lua_nginx_modules_directives.drawio.png)
 
 [Back to TOC](#table-of-contents)
 
@@ -1362,7 +1414,7 @@ A zero value of `<num>` disables the cache.
 
 Note that this feature requires OpenResty's LuaJIT with the new C API `lua_resetthread`.
 
-This feature was first introduced in verson `v0.10.9`.
+This feature was first introduced in version `v0.10.9`.
 
 [Back to TOC](#directives)
 
@@ -1816,6 +1868,70 @@ The Lua code cache can be temporarily disabled during development by
 switching [lua_code_cache](#lua_code_cache) `off` in `nginx.conf` to avoid reloading Nginx.
 
 This directive requires the [ngx_devel_kit](https://github.com/simplresty/ngx_devel_kit) module.
+
+[Back to TOC](#directives)
+
+precontent_by_lua_block
+-----------------------
+
+**syntax:** *precontent_by_lua_block { lua-script }*
+
+**context:** *http, server, location, location if*
+
+**phase:** *precontent tail*
+
+Acts as a precontent phase handler and executes Lua code string specified in `{ <lua-script }` for every request.
+The Lua code may make [API calls](#nginx-api-for-lua) and is executed as a new spawned coroutine in an independent global environment (i.e. a sandbox).
+
+Note that this handler always runs *after* the standard [ngx_http_mirror_module](https://nginx.org/en/docs/http/ngx_http_mirror_module.html) and [ngx_http_try_files_module](https://nginx.org/en/docs/http/ngx_http_core_module.html#try_files). For example:
+
+```nginx
+ location /images/ {
+     try_files $uri /images/default.gif;
+     precontent_by_lua_block {
+        ngx.log(ngx.NOTICE, "file found")
+     }
+ }
+
+ location = /images/default.gif {
+     expires 30s;
+     precontent_by_lua_block {
+        ngx.log(ngx.NOTICE, "file not found, use default.gif instead")
+     }
+ }
+```
+
+That is, if a request for /images/foo.jpg comes in and the file does not exist, the request will be internally redirected to /images/default.gif before [precontent_by_lua_block](#precontent_by_lua_block), and then the [precontent_by_lua_block](#precontent_by_lua_block) in new location will run and log "file not found, use default.gif instead".
+
+You can use [precontent_by_lua_block](#precontent_by_lua_block) to perform some preparatory functions after the access phase handler but before the proxy or other content handler. Especially some functions that cannot be performed in [balancer_by_lua_block](#balancer_by_lua_block).
+
+you can use the [precontent_by_lua_no_postpone](#precontent_by_lua_no_postpone) directive to control when to run this handler inside the "precontent" request-processing phase
+of Nginx.
+
+[Back to TOC](#directives)
+
+precontent_by_lua_file
+----------------------
+
+**syntax:** *precontent_by_lua_file &lt;path-to-lua-script-file&gt;*
+
+**context:** *http, server, location, location if*
+
+**phase:** *precontent tail*
+
+Equivalent to [precontent_by_lua_block](#precontent_by_lua_block), except that the file specified by `<path-to-lua-script-file>` contains the Lua code, or, as from the `v0.5.0rc32` release, the [LuaJIT bytecode](#luajit-bytecode-support) to be executed.
+
+Nginx variables can be used in the `<path-to-lua-script-file>` string to provide flexibility. This however carries some risks and is not ordinarily recommended.
+
+When a relative path like `foo/bar.lua` is given, they will be turned into the absolute path relative to the `server prefix` path determined by the `-p PATH` command-line option while starting the Nginx server.
+
+When the Lua code cache is turned on (by default), the user code is loaded once at the first request and cached
+and the Nginx config must be reloaded each time the Lua source file is modified.
+The Lua code cache can be temporarily disabled during development by switching [lua_code_cache](#lua_code_cache) `off` in `nginx.conf` to avoid repeatedly reloading Nginx.
+
+Nginx variables are supported in the file path for dynamic dispatch just as in [content_by_lua_file](#content_by_lua_file).
+
+But be very careful about malicious user inputs and always carefully validate or filter out the user-supplied path components.
 
 [Back to TOC](#directives)
 
@@ -2687,7 +2803,7 @@ directive.
 This Lua code execution context does not support yielding, so Lua APIs that may yield
 (like cosockets and "light threads") are disabled in this context. One can usually work
 around this limitation by doing such operations in an earlier phase handler (like
-[access_by_lua*](#access_by_lua)) and passing along the result into this context
+[precontent_by_lua*](#precontent_by_lua_block)) and passing along the result into this context
 via the [ngx.ctx](#ngxctx) table.
 
 This directive was first introduced in the `v0.10.0` release.
@@ -2711,6 +2827,29 @@ This directive was first introduced in the `v0.10.0` release.
 
 [Back to TOC](#directives)
 
+balancer_keepalive
+------------------
+
+**syntax:** *balancer_keepalive &lt;total-connections&gt;*
+
+**context:** *upstream*
+
+**phase:** *loading-config*
+
+The `total-connections` parameter sets the maximum number of idle
+keepalive connections to upstream servers that are preserved in the cache of
+each worker process. When this number is exceeded, the least recently used
+connections are closed.
+
+It should be particularly noted that the keepalive directive does not limit the
+total number of connections to upstream servers that an nginx worker process
+can open. The connections parameter should be set to a number small enough to
+let upstream servers process new incoming connections as well.
+
+This directive was first introduced in the `v0.10.21` release.
+
+[Back to TOC](#directives)
+
 lua_need_request_body
 ---------------------
 
@@ -2721,8 +2860,6 @@ lua_need_request_body
 **context:** *http, server, location, location if*
 
 **phase:** *depends on usage*
-
-Due to the stream processing feature of HTTP/2 or HTTP/3, this configuration could potentially block the entire request. Therefore, this configuration is effective only when HTTP/2 or HTTP/3 requests send content-length header. For requests with versions lower than HTTP/2, this configuration can still be used without any problems.
 
 Determines whether to force the request body data to be read before running rewrite/access/content_by_lua* or not. The Nginx core does not read the client request body by default and if request body data is required, then this directive should be turned `on` or the [ngx.req.read_body](#ngxreqread_body) function should be called within the Lua code.
 
@@ -2839,6 +2976,8 @@ patches to the standard Nginx core:
 
 <https://openresty.org/en/nginx-ssl-patches.html>
 
+**Note for HTTP/3 (QUIC) users**: When using this directive with HTTP/3 connections, certain yield operations may fail if the QUIC SSL Lua yield patch is not applied to your OpenSSL installation. OpenResty packages include this patch by default, but if you are building lua-nginx-module separately, you may need to apply the patch manually to ensure proper yield/resume functionality for HTTP/3 connections in SSL Lua phases. The patch can be found at: [nginx-1.27.1-quic_ssl_lua_yield.patch](https://github.com/openresty/openresty/blob/master/patches/nginx/1.27.1/nginx-1.27.1-quic_ssl_lua_yield.patch)
+
 This directive was first introduced in the `v0.10.21` release.
 
 [Back to TOC](#directives)
@@ -2855,6 +2994,8 @@ ssl_client_hello_by_lua_file
 Equivalent to [ssl_client_hello_by_lua_block](#ssl_client_hello_by_lua_block), except that the file specified by `<path-to-lua-script-file>` contains the Lua code, or, as from the `v0.5.0rc32` release, the [LuaJIT bytecode](#luajit-bytecode-support) to be executed.
 
 When a relative path like `foo/bar.lua` is given, they will be turned into the absolute path relative to the `server prefix` path determined by the `-p PATH` command-line option while starting the Nginx server.
+
+**Note for HTTP/3 (QUIC) users**: When using this directive with HTTP/3 connections, certain yield operations may fail if the QUIC SSL Lua yield patch is not applied to your OpenSSL installation. OpenResty packages include this patch by default, but if you are building lua-nginx-module separately, you may need to apply the patch manually to ensure proper yield/resume functionality for HTTP/3 connections in SSL Lua phases. The patch can be found at: [nginx-1.27.1-quic_ssl_lua_yield.patch](https://github.com/openresty/openresty/blob/master/patches/nginx/1.27.1/nginx-1.27.1-quic_ssl_lua_yield.patch)
 
 This directive was first introduced in the `v0.10.21` release.
 
@@ -2949,6 +3090,8 @@ patches to the standard Nginx core:
 
 <https://openresty.org/en/nginx-ssl-patches.html>
 
+**Note for HTTP/3 (QUIC) users**: When using this directive with HTTP/3 connections, certain yield operations may fail if the QUIC SSL Lua yield patch is not applied to your OpenSSL installation. OpenResty packages include this patch by default, but if you are building lua-nginx-module separately, you may need to apply the patch manually to ensure proper yield/resume functionality for HTTP/3 connections in SSL Lua phases. The patch can be found at: [nginx-1.27.1-quic_ssl_lua_yield.patch](https://github.com/openresty/openresty/blob/master/patches/nginx/1.27.1/nginx-1.27.1-quic_ssl_lua_yield.patch)
+
 This directive was first introduced in the `v0.10.0` release.
 
 [Back to TOC](#directives)
@@ -2965,6 +3108,8 @@ ssl_certificate_by_lua_file
 Equivalent to [ssl_certificate_by_lua_block](#ssl_certificate_by_lua_block), except that the file specified by `<path-to-lua-script-file>` contains the Lua code, or, as from the `v0.5.0rc32` release, the [LuaJIT bytecode](#luajit-bytecode-support) to be executed.
 
 When a relative path like `foo/bar.lua` is given, they will be turned into the absolute path relative to the `server prefix` path determined by the `-p PATH` command-line option while starting the Nginx server.
+
+**Note for HTTP/3 (QUIC) users**: When using this directive with HTTP/3 connections, certain yield operations may fail if the QUIC SSL Lua yield patch is not applied to your OpenSSL installation. OpenResty packages include this patch by default, but if you are building lua-nginx-module separately, you may need to apply the patch manually to ensure proper yield/resume functionality for HTTP/3 connections in SSL Lua phases. The patch can be found at: [nginx-1.27.1-quic_ssl_lua_yield.patch](https://github.com/openresty/openresty/blob/master/patches/nginx/1.27.1/nginx-1.27.1-quic_ssl_lua_yield.patch)
 
 This directive was first introduced in the `v0.10.0` release.
 
@@ -3114,6 +3259,172 @@ This directive was first introduced in the `v0.10.6` release.
 
 Note that: this directive is only allowed to used in **http context** from the `v0.10.7` release
 (because SSL session resumption happens before server name dispatch).
+
+[Back to TOC](#directives)
+
+proxy_ssl_certificate_by_lua_block
+----------------------------------
+
+**syntax:** *proxy_ssl_certificate_by_lua_block { lua-script }*
+
+**context:** *location*
+
+**phase:** *right-after-server-certificate-request-message-was-processed*
+
+This directive runs user Lua code when Nginx is about to post-process the SSL server certificate request message from upstream. It is particularly useful for setting the SSL certificate chain and the corresponding private key for the upstream SSL (https) connections. It is also useful to load such handshake configurations nonblockingly from the remote (for example, with the [cosocket](#ngxsockettcp) API).
+
+The [ngx.ssl.proxysslcert](https://github.com/openresty/lua-resty-core/blob/master/lib/ngx/ssl/proxysslcert.md) Lua module provided by the [lua-resty-core](https://github.com/openresty/lua-resty-core/#readme) library are particularly useful in this context.
+
+Below is a trivial example using the [ngx.ssl](https://github.com/openresty/lua-resty-core/blob/master/lib/ngx/ssl.md) module and the [ngx.ssl.proxysslcert](https://github.com/openresty/lua-resty-core/blob/master/lib/ngx/ssl/proxysslcert.md) module at the same time:
+
+```nginx
+
+ server {
+     listen 443 ssl;
+     server_name   test.com;
+     ssl_certificate /path/to/cert.crt;
+     ssl_certificate_key /path/to/key.key;
+
+     location /t {
+         proxy_pass https://upstream;
+
+         proxy_ssl_certificate_by_lua_block {
+             local ssl = require "ngx.ssl"
+             local proxy_ssl_cert = require "ngx.ssl.proxysslcert"
+
+             -- NOTE: for illustration only, we don't handle error below
+
+             local f = assert(io.open("/path/to/cert.crt"))
+             local cert_data = f:read("*a")
+             f:close()
+
+             local cert, err = ssl.parse_pem_cert(cert_data)
+             local ok, err = proxy_ssl_cert.set_cert(cert)
+
+             local f = assert(io.open("/path/to/key.key"))
+             local pkey_data = f:read("*a")
+             f:close()
+
+             local pkey, err = ssl.parse_pem_priv_key(pkey_data)
+             local ok, err = proxy_ssl_cert.set_priv_key(pkey)
+             -- ...
+        }
+     }
+     ...
+ }
+```
+
+See more information in the [ngx.ssl.proxysslcert](https://github.com/openresty/lua-resty-core/blob/master/lib/ngx/ssl/proxysslcert.md) Lua module's official documentation.
+
+Uncaught Lua exceptions in the user Lua code immediately abort the current SSL session, so does the
+[ngx.exit](#ngxexit) call with an error code like `ngx.ERROR`.
+
+This Lua code execution context *does* support yielding, so Lua APIs that may yield (like cosockets, sleeping, and "light threads") are enabled in this context.
+
+Note that, unlike the relations between the [ssl_certificate](https://nginx.org/en/docs/http/ngx_http_ssl_module.html#ssl_certificate) and [ssl_certificate_key](https://nginx.org/en/docs/http/ngx_http_ssl_module.html#ssl_certificate_key) directives and [ssl_certificate_by_lua*](#ssl_certificate_by_lua_block), the [proxy_ssl_certificate](https://nginx.org/en/docs/http/ngx_http_proxy_module.html#proxy_ssl_certificate) and [proxy_ssl_certificate_key](https://nginx.org/en/docs/http/ngx_http_proxy_module.html#proxy_ssl_certificate_key) directives can be used together with [proxy_ssl_certificate_by_lua*](#proxy_ssl_certificate_by_lua_block).
+
+* When there are only [proxy_ssl_certificate](https://nginx.org/en/docs/http/ngx_http_proxy_module.html#proxy_ssl_certificate) and [proxy_ssl_certificate_key](https://nginx.org/en/docs/http/ngx_http_proxy_module.html#proxy_ssl_certificate_key) directives, the original Nginx behavior will obviously remain the same.
+
+* When there is only [proxy_ssl_certificate_by_lua*](#proxy_ssl_certificate_by_lua_block), Nginx will send the certificate and its related private key and chain set by Lua codes.
+
+* When the [proxy_ssl_certificate](https://nginx.org/en/docs/http/ngx_http_proxy_module.html#proxy_ssl_certificate) and [proxy_ssl_certificate_key](https://nginx.org/en/docs/http/ngx_http_proxy_module.html#proxy_ssl_certificate_key) directives and [proxy_ssl_certificate_by_lua*](#proxy_ssl_certificate_by_lua_block) are used at the same time, then [proxy_ssl_certificate_by_lua*](#proxy_ssl_certificate_by_lua_block) will take precedence over the [proxy_ssl_certificate](https://nginx.org/en/docs/http/ngx_http_proxy_module.html#proxy_ssl_certificate) and [proxy_ssl_certificate_key](https://nginx.org/en/docs/http/ngx_http_proxy_module.html#proxy_ssl_certificate_key) directives.
+
+Please refer to corresponding test case file and [ngx.ssl.proxysslcert](https://github.com/openresty/lua-resty-core/blob/master/lib/ngx/ssl/proxysslcert.md) for more details.
+
+Note also that, it has the same condition as the [proxy_ssl_certificate](https://nginx.org/en/docs/http/ngx_http_proxy_module.html#proxy_ssl_certificate) directive for [proxy_ssl_certificate_by_lua*](#proxy_ssl_certificate_by_lua_block) to work, that is the upstream server should enable verification of client certificates.
+
+This directive requires OpenSSL 1.0.2e or greater.
+
+[Back to TOC](#directives)
+
+proxy_ssl_certificate_by_lua_file
+---------------------------------
+
+**syntax:** *proxy_ssl_certificate_by_lua_file &lt;path-to-lua-script-file&gt;*
+
+**context:** *location*
+
+**phase:** *right-after-server-certificate-request-message-was-processed*
+
+Equivalent to [proxy_ssl_certificate_by_lua_block](#proxy_ssl_certificate_by_lua_block), except that the file specified by `<path-to-lua-script-file>` contains the Lua code, or, as from the `v0.5.0rc32` release, the [LuaJIT bytecode](#luajit-bytecode-support) to be executed.
+
+When a relative path like `foo/bar.lua` is given, they will be turned into the absolute path relative to the `server prefix` path determined by the `-p PATH` command-line option while starting the Nginx server.
+
+[Back to TOC](#directives)
+
+proxy_ssl_verify_by_lua_block
+-----------------------------
+
+**syntax:** *proxy_ssl_verify_by_lua_block { lua-script }*
+
+**context:** *location*
+
+**phase:** *right-after-server-certificate-message-was-processed*
+
+This directive runs user Lua code when Nginx is about to post-process the SSL server certificate message for the upstream SSL (https) connections.
+
+It is particularly useful to parse upstream server certificate and do some custom operations in pure lua.
+
+The [ngx.ssl.proxysslverify](https://github.com/openresty/lua-resty-core/blob/master/lib/ngx/ssl/proxysslverify.md) Lua module provided by the [lua-resty-core](https://github.com/openresty/lua-resty-core/#readme)
+library are particularly useful in this context.
+
+Below is a trivial example using the
+[ngx.ssl.proxysslverify](https://github.com/openresty/lua-resty-core/blob/master/lib/ngx/ssl/proxysslverify.md) module
+at the same time:
+
+```nginx
+
+ server {
+     listen 443 ssl;
+     server_name   test.com;
+     ssl_certificate /path/to/cert.crt;
+     ssl_certificate_key /path/to/key.key;
+
+     location /t {
+         proxy_ssl_certificate /path/to/cert.crt;
+         proxy_ssl_certificate_key /path/to/key.key;
+         proxy_pass https://upstream;
+
+         proxy_ssl_verify_by_lua_block {
+             local proxy_ssl_vfy = require "ngx.ssl.proxysslverify"
+             local cert = proxy_ssl_vfy.get_verify_cert()
+
+             -- ocsp to verify cert
+             -- check crl
+             proxy_ssl_vfy.set_verify_result()
+             ...
+         }
+     }
+     ...
+ }
+```
+
+See more information in the [ngx.ssl.proxysslverify](https://github.com/openresty/lua-resty-core/blob/master/lib/ngx/ssl/proxysslverify.md)
+Lua module's official documentation.
+
+Uncaught Lua exceptions in the user Lua code immediately abort the current SSL session, so does the
+[ngx.exit](#ngxexit) call with an error code like `ngx.ERROR`.
+
+This Lua code execution context *does* support yielding, so Lua APIs that may yield
+(like cosockets, sleeping, and "light threads")
+are enabled in this context
+
+This directive requires OpenSSL 3.0.2 or greater.
+
+[Back to TOC](#directives)
+
+proxy_ssl_verify_by_lua_file
+----------------------------
+
+**syntax:** *proxy_ssl_verify_by_lua_file &lt;path-to-lua-script-file&gt;*
+
+**context:** *location*
+
+**phase:** *right-after-server-certificate-message-was-processed*
+
+Equivalent to [proxy_ssl_verify_by_lua_block](#proxy_ssl_verify_by_lua_block), except that the file specified by `<path-to-lua-script-file>` contains the Lua code, or, as from the `v0.5.0rc32` release, the [LuaJIT bytecode](#luajit-bytecode-support) to be executed.
+
+When a relative path like `foo/bar.lua` is given, they will be turned into the absolute path relative to the `server prefix` path determined by the `-p PATH` command-line option while starting the Nginx server.
 
 [Back to TOC](#directives)
 
@@ -3409,6 +3720,19 @@ See also [lua_ssl_certificate](#lua_ssl_certificate), [lua_ssl_certificate_key](
 
 [Back to TOC](#directives)
 
+lua_ssl_key_log
+---------------
+
+**syntax:** *lua_ssl_key_log &lt;file&gt;*
+
+**default:** *none*
+
+**context:** *http, server, location*
+
+Enables logging of client connection SSL keys in the [tcpsock:sslhandshake](#tcpsocksslhandshake) method and specifies the path to the key log file. Keys are logged in the SSLKEYLOGFILE format compatible with Wireshark.
+
+[Back to TOC](#directives)
+
 lua_ssl_conf_command
 --------------------
 
@@ -3437,6 +3761,21 @@ Note though that configuring OpenSSL directly with `lua_ssl_conf_command` might 
 This directive was first introduced in the `v0.10.21` release.
 
 
+
+[Back to TOC](#directives)
+
+lua_upstream_skip_openssl_default_verify
+----------------------------------------
+
+**syntax:** *lua_upstream_skip_openssl_default_verify on|off*
+
+**default:** *lua_upstream_skip_openssl_default_verify off*
+
+**context:** *location, location-if*
+
+When using proxy_ssl_verify_by_lua directive, `lua_upstream_skip_openssl_default_verify` controls whether to skip default openssl's verify function, that means using pure Lua code to verify upstream server certificate.
+
+This directive is turned `off` by default.
 
 [Back to TOC](#directives)
 
@@ -3488,6 +3827,19 @@ access_by_lua_no_postpone
 Controls whether or not to disable postponing [access_by_lua*](#access_by_lua) directives to run at the end of the `access` request-processing phase. By default, this directive is turned off and the Lua code is postponed to run at the end of the `access` phase.
 
 This directive was first introduced in the `v0.9.20` release.
+
+[Back to TOC](#directives)
+
+precontent_by_lua_no_postpone
+-----------------------------
+
+**syntax:** *precontent_by_lua_no_postpone on|off*
+
+**default:** *precontent_by_lua_no_postpone off*
+
+**context:** *http*
+
+Controls whether or not to disable postponing [precontent_by_lua*](#precontent_by_lua_block) directives to run at the end of the `precontent` request-processing phase. By default, this directive is turned off and the Lua code is postponed to run at the end of the `precontent` phase.
 
 [Back to TOC](#directives)
 
@@ -3601,7 +3953,7 @@ lua_worker_thread_vm_pool_size
 
 **syntax:** *lua_worker_thread_vm_pool_size &lt;size&gt;*
 
-**default:** *lua_worker_thread_vm_pool_size 100*
+**default:** *lua_worker_thread_vm_pool_size 10*
 
 **context:** *http*
 
@@ -3612,6 +3964,8 @@ Also, it is not allowed to create Lua VMs that exceeds the pool size limit.
 The Lua VM in the VM pool is used to execute Lua code in separate thread.
 
 The pool is global at Nginx worker level. And it is used to reuse Lua VMs between requests.
+
+**Warning:** Each worker thread uses a separate Lua VM and caches the Lua VM for reuse in subsequent operations. Configuring too many worker threads can result in consuming a lot of memory.
 
 [Back to TOC](#directives)
 
@@ -3672,6 +4026,7 @@ Nginx API for Lua
 * [ngx.decode_args](#ngxdecode_args)
 * [ngx.encode_base64](#ngxencode_base64)
 * [ngx.decode_base64](#ngxdecode_base64)
+* [ngx.decode_base64mime](#ngxdecode_base64mime)
 * [ngx.crc32_short](#ngxcrc32_short)
 * [ngx.crc32_long](#ngxcrc32_long)
 * [ngx.hmac_sha1](#ngxhmac_sha1)
@@ -3717,6 +4072,7 @@ Nginx API for Lua
 * [ngx.shared.DICT.capacity](#ngxshareddictcapacity)
 * [ngx.shared.DICT.free_space](#ngxshareddictfree_space)
 * [ngx.socket.udp](#ngxsocketudp)
+* [udpsock:bind](#udpsockbind)
 * [udpsock:setpeername](#udpsocksetpeername)
 * [udpsock:send](#udpsocksend)
 * [udpsock:receive](#udpsockreceive)
@@ -3726,7 +4082,9 @@ Nginx API for Lua
 * [ngx.socket.tcp](#ngxsockettcp)
 * [tcpsock:bind](#tcpsockbind)
 * [tcpsock:connect](#tcpsockconnect)
+* [tcpsock:getfd](#getfd)
 * [tcpsock:setclientcert](#tcpsocksetclientcert)
+* [tcpsock:settrustedstore](#tcpsocksettrustedstore)
 * [tcpsock:sslhandshake](#tcpsocksslhandshake)
 * [tcpsock:send](#tcpsocksend)
 * [tcpsock:receive](#tcpsockreceive)
@@ -3738,6 +4096,9 @@ Nginx API for Lua
 * [tcpsock:setoption](#tcpsocksetoption)
 * [tcpsock:setkeepalive](#tcpsocksetkeepalive)
 * [tcpsock:getreusedtimes](#tcpsockgetreusedtimes)
+* [tcpsock:getsslpointer](#tcpsockgetsslpointer)
+* [tcpsock:getsslctx](#tcpsockgetsslctx)
+* [tcpsock:getsslsession](#tcpsockgetsslsession)
 * [ngx.socket.connect](#ngxsocketconnect)
 * [ngx.get_phase](#ngxget_phase)
 * [ngx.thread.spawn](#ngxthreadspawn)
@@ -4125,7 +4486,7 @@ Then `GET /main` will give the output
 
 Here, modification of the `ngx.ctx.blah` entry in the subrequest does not affect the one in the parent request. This is because they have two separate versions of `ngx.ctx.blah`.
 
-Internal redirects (triggered by nginx configuration directives like `error_page`, `try_files`, `index` and etc) will destroy the original request `ngx.ctx` data (if any) and the new request will have an empty `ngx.ctx` table. For instance,
+Internal redirects (triggered by nginx configuration directives like `error_page`, `try_files`, `index`, etc.) will destroy the original request `ngx.ctx` data (if any) and the new request will have an empty `ngx.ctx` table. For instance,
 
 ```nginx
 
@@ -4280,6 +4641,8 @@ argument, which supports the options:
 	specify the subrequest's request body (string value only).
 * `args`
 	specify the subrequest's URI query arguments (both string value and Lua tables are accepted)
+* `headers`
+    specify the subrequest's request headers (Lua table only). this headers will override the original headers of the subrequest.
 * `ctx`
 	specify a Lua table to be the [ngx.ctx](#ngxctx) table for the subrequest. It can be the current request's [ngx.ctx](#ngxctx) table, which effectively makes the parent and its subrequest to share exactly the same context table. This option was first introduced in the `v0.3.1rc25` release.
 * `vars`
@@ -4430,6 +4793,33 @@ Accessing `/lua` will yield the output
 
     dog = hello
     cat = 32
+
+The `headers` option can be used to specify the request headers for the subrequest. The value of this option should be a Lua table where the keys are the header names and the values are the header values. For example,
+
+```lua
+
+location /foo {
+    content_by_lua_block {
+        ngx.print(ngx.var.http_x_test)
+    }
+}
+
+location /lua {
+    content_by_lua_block {
+        local res = ngx.location.capture("/foo", {
+            headers = {
+                ["X-Test"] = "aa",
+            }
+        })
+        ngx.print(res.body)
+    }
+}
+```
+
+Accessing `/lua` will yield the output
+
+
+    aa
 
 
 The `ctx` option can be used to specify a custom Lua table to serve as the [ngx.ctx](#ngxctx) table for the subrequest.
@@ -4784,11 +5174,11 @@ ngx.req.http_version
 
 **syntax:** *num = ngx.req.http_version()*
 
-**context:** *set_by_lua&#42;, rewrite_by_lua&#42;, access_by_lua&#42;, content_by_lua&#42;, header_filter_by_lua&#42;*
+**context:** *set_by_lua&#42;, rewrite_by_lua&#42;, access_by_lua&#42;, content_by_lua&#42;, header_filter_by_lua&#42;, log_by_lua&#42;*
 
 Returns the HTTP version number for the current request as a Lua number.
 
-Current possible values are 2.0, 1.0, 1.1, and 0.9. Returns `nil` for unrecognized values.
+Current possible values are 3.0, 2.0, 1.0, 1.1, and 0.9. Returns `nil` for unrecognized values.
 
 This method was first introduced in the `v0.7.17` release.
 
@@ -4799,7 +5189,7 @@ ngx.req.raw_header
 
 **syntax:** *str = ngx.req.raw_header(no_request_line?)*
 
-**context:** *set_by_lua&#42;, rewrite_by_lua&#42;, access_by_lua&#42;, content_by_lua&#42;, header_filter_by_lua&#42;*
+**context:** *set_by_lua&#42;, rewrite_by_lua&#42;, access_by_lua&#42;, content_by_lua&#42;, header_filter_by_lua&#42;, log_by_lua&#42;*
 
 Returns the original raw HTTP protocol header received by the Nginx server.
 
@@ -4884,7 +5274,7 @@ ngx.req.set_uri
 
 **context:** *set_by_lua&#42;, rewrite_by_lua&#42;, access_by_lua&#42;, content_by_lua&#42;, header_filter_by_lua&#42;, body_filter_by_lua&#42;*
 
-Rewrite the current request's (parsed) URI by the `uri` argument. The `uri` argument must be a Lua string and cannot be of zero length, or a Lua exception will be thrown.
+Rewrite the current request's (parsed) URI by the `uri` argument. The `uri` argument must be a Lua string and cannot be of zero length, or a Lua exception will be thrown.  After this function has been called, [ngx.req.is_internal](#ngxreqis_internal) will evaluate to true, even if this request came from a client.
 
 The optional boolean `jump` argument can trigger location rematch (or location jump) as [ngx_http_rewrite_module](http://nginx.org/en/docs/http/ngx_http_rewrite_module.html)'s [rewrite](http://nginx.org/en/docs/http/ngx_http_rewrite_module.html#rewrite) directive, that is, when `jump` is `true` (default to `false`), this function will never return and it will tell Nginx to try re-searching locations with the new URI value at the later `post-rewrite` phase and jumping to the new location.
 
@@ -5426,8 +5816,6 @@ Reads the client request body synchronously without blocking the Nginx event loo
  local args = ngx.req.get_post_args()
 ```
 
-Due to the stream processing feature of HTTP/2 or HTTP/3, this api could potentially block the entire request. Therefore, this api is effective only when HTTP/2 or HTTP/3 requests send content-length header. For requests with versions lower than HTTP/2, this api can still be used without any problems.
-
 If the request body is already read previously by turning on [lua_need_request_body](#lua_need_request_body) or by using other modules, then this function does not run and returns immediately.
 
 If the request body has already been explicitly discarded, either by the [ngx.req.discard_body](#ngxreqdiscard_body) function or other modules, this function does not run and returns immediately.
@@ -5467,11 +5855,13 @@ See also [ngx.req.read_body](#ngxreqread_body).
 ngx.req.get_body_data
 ---------------------
 
-**syntax:** *data = ngx.req.get_body_data()*
+**syntax:** *data = ngx.req.get_body_data(max_bytes?)*
 
 **context:** *rewrite_by_lua&#42;, access_by_lua&#42;, content_by_lua&#42;, log_by_lua&#42;*
 
 Retrieves in-memory request body data. It returns a Lua string rather than a Lua table holding all the parsed query arguments. Use the [ngx.req.get_post_args](#ngxreqget_post_args) function instead if a Lua table is required.
+
+The optional `max_bytes` argument can be used when you don't need the entire body.
 
 This function returns `nil` if
 
@@ -5510,6 +5900,8 @@ If the request body has been read into memory, try calling the [ngx.req.get_body
 
 To force in-file request bodies, try turning on [client_body_in_file_only](http://nginx.org/en/docs/http/ngx_http_core_module.html#client_body_in_file_only).
 
+Note that this function is also work for balancer phase but it needs to call [balancer.recreate_request](https://github.com/openresty/lua-resty-core/blob/master/lib/ngx/balancer.md#recreate_request) to make the change take effect after set the request body data or headers.
+
 This function was first introduced in the `v0.3.1rc17` release.
 
 See also [ngx.req.get_body_data](#ngxreqget_body_data).
@@ -5521,13 +5913,15 @@ ngx.req.set_body_data
 
 **syntax:** *ngx.req.set_body_data(data)*
 
-**context:** *rewrite_by_lua&#42;, access_by_lua&#42;, content_by_lua&#42;*
+**context:** *rewrite_by_lua&#42;, access_by_lua&#42;, content_by_lua&#42;, balancer_by_lua&#42;,*
 
 Set the current request's request body using the in-memory data specified by the `data` argument.
 
 If the request body has not been read yet, call [ngx.req.read_body](#ngxreqread_body) first (or turn on [lua_need_request_body](#lua_need_request_body) to force this module to read the request body. This is not recommended however). Additionally, the request body must not have been previously discarded by [ngx.req.discard_body](#ngxreqdiscard_body).
 
 Whether the previous request body has been read into memory or buffered into a disk file, it will be freed or the disk file will be cleaned up immediately, respectively.
+
+Note that this function is also work for balancer phase but it needs to call [balancer.recreate_request](https://github.com/openresty/lua-resty-core/blob/master/lib/ngx/balancer.md#recreate_request) to make the change take effect after set the request body data or headers.
 
 This function was first introduced in the `v0.3.1rc18` release.
 
@@ -5540,7 +5934,7 @@ ngx.req.set_body_file
 
 **syntax:** *ngx.req.set_body_file(file_name, auto_clean?)*
 
-**context:** *rewrite_by_lua&#42;, access_by_lua&#42;, content_by_lua&#42;*
+**context:** *rewrite_by_lua&#42;, access_by_lua&#42;, content_by_lua&#42;, balancer_by_lua&#42;,*
 
 Set the current request's request body using the in-file data specified by the `file_name` argument.
 
@@ -5640,6 +6034,8 @@ ngx.req.socket
 Returns a read-only cosocket object that wraps the downstream connection. Only [receive](#tcpsockreceive), [receiveany](#tcpsockreceiveany) and [receiveuntil](#tcpsockreceiveuntil) methods are supported on this object.
 
 In case of error, `nil` will be returned as well as a string describing the error.
+
+**Note:** This method will block while waiting for client request body to be fully received. Block time depends on the [client_body_timeout](http://nginx.org/en/docs/http/ngx_http_core_module.html#client_body_timeout) directive and maximum body size specified by the [client_max_body_size](http://nginx.org/en/docs/http/ngx_http_core_module.html#client_max_body_size) directive. If read timeout occurs or client body size exceeds the defined limit, this function will not return and `408 Request Time-out` or `413 Request Entity Too Large` response will be returned to the client instead.
 
 The socket object returned by this method is usually used to read the current request's body in a streaming fashion. Do not turn on the [lua_need_request_body](#lua_need_request_body) directive, and do not mix this call with [ngx.req.read_body](#ngxreqread_body) and [ngx.req.discard_body](#ngxreqdiscard_body).
 
@@ -6061,7 +6457,7 @@ It accepts the following values (defaults to `2`):
 `?`, 0x00 ~ 0x1F, 0x7F ~ 0xFF will be escaped.
 * `2`: escape `str` as a URI component. All characters except
 alphabetic characters, digits, `-`, `.`, `_`,
-`~` will be encoded as `%XX`.
+`~`, `!`, `'`, `(`, `)`, `*` will be encoded as `%XX`.
 
 [Back to TOC](#nginx-api-for-lua)
 
@@ -6195,7 +6591,7 @@ ngx.encode_base64
 
 **context:** *set_by_lua&#42;, rewrite_by_lua&#42;, access_by_lua&#42;, content_by_lua&#42;, header_filter_by_lua&#42;, body_filter_by_lua&#42;, log_by_lua&#42;, ngx.timer.&#42;, balancer_by_lua&#42;, ssl_certificate_by_lua&#42;, ssl_session_fetch_by_lua&#42;, ssl_session_store_by_lua&#42;, ssl_client_hello_by_lua&#42;*
 
-Encodes `str` to a base64 digest.
+Encodes `str` to a base64 digest. For base64url encoding use [`base64.encode_base64url`](https://github.com/openresty/lua-resty-core/blob/master/lib/ngx/base64.md#encode_base64url).
 
 Since the `0.9.16` release, an optional boolean-typed `no_padding` argument can be specified to control whether the base64 padding should be appended to the resulting digest (default to `false`, i.e., with padding enabled).
 
@@ -6208,7 +6604,25 @@ ngx.decode_base64
 
 **context:** *set_by_lua&#42;, rewrite_by_lua&#42;, access_by_lua&#42;, content_by_lua&#42;, header_filter_by_lua&#42;, body_filter_by_lua&#42;, log_by_lua&#42;, ngx.timer.&#42;, balancer_by_lua&#42;, ssl_certificate_by_lua&#42;, ssl_session_fetch_by_lua&#42;, ssl_session_store_by_lua&#42;, ssl_client_hello_by_lua&#42;*
 
-Decodes the `str` argument as a base64 digest to the raw form. Returns `nil` if `str` is not well formed.
+Decodes the `str` argument as a base64 digest to the raw form. For base64url decoding use [`base64.decode_base64url`](https://github.com/openresty/lua-resty-core/blob/master/lib/ngx/base64.md#decode_base64url).
+
+The `str` should be standard 'base64' encoding for RFC 3548 or RFC 4648, and will returns `nil` if is not well formed or any characters not in the base encoding alphabet. Padding may be omitted from the input.
+
+[Back to TOC](#nginx-api-for-lua)
+
+ngx.decode_base64mime
+---------------------
+**syntax:** *newstr = ngx.decode_base64mime(str)*
+
+**context:** *set_by_lua&#42;, rewrite_by_lua&#42;, access_by_lua&#42;, content_by_lua&#42;, header_filter_by_lua&#42;, body_filter_by_lua&#42;, log_by_lua&#42;, ngx.timer.&#42;, balancer_by_lua&#42;, ssl_certificate_by_lua&#42;, ssl_session_fetch_by_lua&#42;, ssl_session_store_by_lua&#42;*
+
+**requires:** `resty.core.base64` or `resty.core`
+
+Decodes the `str` argument as a base64 digest to the raw form.
+The `str` follows base64 transfer encoding for MIME (RFC 2045), and will discard characters outside the base encoding alphabet.
+Returns `nil` if `str` is not well formed.
+
+ '''Note:''' This method requires the <code>resty.core.base64</code> or <code>resty.core</code> modules from the [lua-resty-core](https://github.com/openresty/lua-resty-core) library.
 
 [Back to TOC](#nginx-api-for-lua)
 
@@ -6452,7 +6866,7 @@ ngx.http_time
 
 **context:** *init_worker_by_lua&#42;, set_by_lua&#42;, rewrite_by_lua&#42;, access_by_lua&#42;, content_by_lua&#42;, header_filter_by_lua&#42;, body_filter_by_lua&#42;, log_by_lua&#42;, ngx.timer.&#42;, balancer_by_lua&#42;, ssl_certificate_by_lua&#42;, ssl_session_fetch_by_lua&#42;, ssl_session_store_by_lua&#42;, exit_worker_by_lua&#42;, ssl_client_hello_by_lua&#42;*
 
-Returns a formated string can be used as the http header time (for example, being used in `Last-Modified` header). The parameter `sec` is the time stamp in seconds (like those returned from [ngx.time](#ngxtime)).
+Returns a formatted string can be used as the http header time (for example, being used in `Last-Modified` header). The parameter `sec` is the time stamp in seconds (like those returned from [ngx.time](#ngxtime)).
 
 ```nginx
 
@@ -7522,6 +7936,7 @@ ngx.socket.udp
 
 Creates and returns a UDP or datagram-oriented unix domain socket object (also known as one type of the "cosocket" objects). The following methods are supported on this object:
 
+* [bind](#udpsockbind)
 * [setpeername](#udpsocksetpeername)
 * [send](#udpsocksend)
 * [receive](#udpsockreceive)
@@ -7533,6 +7948,36 @@ It is intended to be compatible with the UDP API of the [LuaSocket](http://w3.im
 This feature was first introduced in the `v0.5.7` release.
 
 See also [ngx.socket.tcp](#ngxsockettcp).
+
+[Back to TOC](#nginx-api-for-lua)
+
+udpsock:bind
+------------
+**syntax:** *ok, err = udpsock:bind(address)*
+
+**context:** *rewrite_by_lua&#42;, access_by_lua&#42;, content_by_lua&#42;, ngx.timer.&#42;, ssl_certificate_by_lua&#42;,ssl_session_fetch_by_lua&#42;,ssl_client_hello_by_lua&#42;*
+
+Just like the standard [proxy_bind](http://nginx.org/en/docs/http/ngx_http_proxy_module.html#proxy_bind) directive, this api makes the outgoing connection to a upstream server originate from the specified local IP address.
+
+Only IP addresses can be specified as the `address` argument.
+
+Here is an example for connecting to a TCP server from the specified local IP address:
+
+```nginx
+
+ location /test {
+     content_by_lua_block {
+         local sock = ngx.socket.udp()
+         -- assume "192.168.1.10" is the local ip address
+         local ok, err = sock:bind("192.168.1.10")
+         if not ok then
+             ngx.say("failed to bind: ", err)
+             return
+         end
+         sock:close()
+     }
+ }
+```
 
 [Back to TOC](#nginx-api-for-lua)
 
@@ -7706,6 +8151,7 @@ Creates and returns a TCP or stream-oriented unix domain socket object (also kno
 * [bind](#tcpsockbind)
 * [connect](#tcpsockconnect)
 * [setclientcert](#tcpsocksetclientcert)
+* [settrustedstore](#tcpsocksettrustedstore)
 * [sslhandshake](#tcpsocksslhandshake)
 * [send](#tcpsocksend)
 * [receive](#tcpsockreceive)
@@ -7717,6 +8163,9 @@ Creates and returns a TCP or stream-oriented unix domain socket object (also kno
 * [receiveuntil](#tcpsockreceiveuntil)
 * [setkeepalive](#tcpsocksetkeepalive)
 * [getreusedtimes](#tcpsockgetreusedtimes)
+* [tcpsock:getsslpointer](#tcpsockgetsslpointer)
+* [tcpsock:getsslctx](#tcpsockgetsslctx)
+* [tcpsock:getsslsession](#tcpsockgetsslsession)
 
 It is intended to be compatible with the TCP API of the [LuaSocket](http://w3.impa.br/~diego/software/luasocket/tcp.html) library but is 100% nonblocking out of the box. Also, we introduce some new APIs to provide more functionalities.
 
@@ -7745,13 +8194,14 @@ See also [ngx.socket.udp](#ngxsocketudp).
 
 tcpsock:bind
 ------------
-**syntax:** *ok, err = tcpsock:bind(address)*
+**syntax:** *ok, err = tcpsock:bind(address, port?)*
 
 **context:** *rewrite_by_lua&#42;, access_by_lua&#42;, content_by_lua&#42;, ngx.timer.&#42;, ssl_certificate_by_lua&#42;,ssl_session_fetch_by_lua&#42;,ssl_client_hello_by_lua&#42;*
 
 Just like the standard [proxy_bind](http://nginx.org/en/docs/http/ngx_http_proxy_module.html#proxy_bind) directive, this api makes the outgoing connection to a upstream server originate from the specified local IP address.
 
-Only IP addresses can be specified as the `address` argument.
+IP addresses can be specified as the `address` argument.
+The optional `port` argument is usually used in the transparent proxy.
 
 Here is an example for connecting to a TCP server from the specified local IP address:
 
@@ -7881,14 +8331,14 @@ An optional Lua table can be specified as the last argument to this method to sp
 * `backlog`
 	if specified, this module will limit the total number of opened connections
 	for this pool. No more connections than `pool_size` can be opened
-	for this pool at any time. If the connection pool is full, subsequent
-	connect operations will be queued into a queue equal to this option's
-	value (the "backlog" queue).
+	for this pool at any time. If `pool_size` number of connections are in use,
+	subsequent connect operations will be queued into a queue equal to this
+	option's value (the "backlog" queue).
 	If the number of queued connect operations is equal to `backlog`,
 	subsequent connect operations will fail and return `nil` plus the
 	error string `"too many waiting connect operations"`.
-	The queued connect operations will be resumed once the number of connections
-	in the pool is less than `pool_size`.
+	The queued connect operations will be resumed once the number of active
+	connections becomes less than `pool_size`.
 	The queued connect operation will abort once they have been queued for more
 	than `connect_timeout`, controlled by
 	[settimeouts](#tcpsocksettimeouts), and will return `nil` plus
@@ -7901,6 +8351,21 @@ This method was first introduced in the `v0.5.0rc1` release.
 
 [Back to TOC](#nginx-api-for-lua)
 
+
+tcpsock:getfd
+-------------
+
+**syntax:** *fd, err = tcpsock:getfd()*
+
+**context:** *rewrite_by_lua&#42;, access_by_lua&#42;, content_by_lua&#42;, ngx.timer.&#42;, ssl_certificate_by_lua&#42;, ssl_session_fetch_by_lua&#42;, ssl_client_hello_by_lua&#42;*
+
+Get the file descriptor of the current tcp socket.
+
+This method was first introduced in the `v0.10.29` release.
+
+[Back to TOC](#nginx-api-for-lua)
+
+
 tcpsock:setclientcert
 ---------------------
 
@@ -7912,17 +8377,47 @@ Set client certificate chain and corresponding private key to the TCP socket obj
 The certificate chain and private key provided will be used later by the [tcpsock:sslhandshake](#tcpsocksslhandshake) method.
 
 * `cert` specify a client certificate chain cdata object that will be used while handshaking with
-remote server. These objects can be created using [ngx.ssl.parse\_pem\_cert](https://github.com/openresty/lua-resty-core/blob/master/lib/ngx/ssl.md#parse_pem_cert)
+remote server. These objects can be created using [ngx.ssl.parse\_pem\_cert](https://github.com/openresty/lua-resty-core/blob/master/lib/ngx/ssl.md#parse_pem_cert) or [ngx.ssl.parse\_der\_cert](https://github.com/openresty/lua-resty-core/blob/master/lib/ngx/ssl.md#parse_der_cert)
 function provided by lua-resty-core. Note that specifying the `cert` option requires
 corresponding `pkey` be provided too. See below.
 * `pkey` specify a private key corresponds to the `cert` option above.
-These objects can be created using [ngx.ssl.parse\_pem\_priv\_key](https://github.com/openresty/lua-resty-core/blob/master/lib/ngx/ssl.md#parse_pem_priv_key)
+These objects can be created using [ngx.ssl.parse\_pem\_priv\_key](https://github.com/openresty/lua-resty-core/blob/master/lib/ngx/ssl.md#parse_pem_priv_key) or [ngx.ssl.parse\_der\_priv\_key](https://github.com/openresty/lua-resty-core/blob/master/lib/ngx/ssl.md#parse_der_priv_key)
 function provided by lua-resty-core.
 
 If both of `cert` and `pkey` are `nil`, this method will clear any existing client certificate and private key
 that was previously set on the cosocket object.
 
 This method was first introduced in the `v0.10.22` release.
+
+[Back to TOC](#nginx-api-for-lua)
+
+tcpsock:settrustedstore
+-----------------------
+
+**syntax:** *ok, err = tcpsock:settrustedstore(x509_store)*
+
+**context:** *rewrite_by_lua&#42;, access_by_lua&#42;, content_by_lua&#42;, ngx.timer.&#42;*
+
+Set an X509 trusted certificate store on the TCP socket object. The store will be used by the
+[tcpsock:sslhandshake](#tcpsocksslhandshake) method to verify the remote server's certificate, in
+place of the CAs configured by the [lua_ssl_trusted_certificate](#lua_ssl_trusted_certificate)
+directive. This is useful when the set of trusted CAs is determined at request time, for example
+when talking to per-tenant upstreams whose CAs are not known at configuration time.
+
+* `x509_store` specifies an `X509_STORE *` cdata object that will be used during the SSL/TLS
+  handshake. Such an object can be built using the
+  [resty.openssl.x509.store](https://github.com/fffonion/lua-resty-openssl) library or directly via
+  raw OpenSSL FFI bindings.
+
+If `x509_store` is `nil`, this method will clear any previously set trusted store on the cosocket
+object.
+
+The TCP connection must already be established before calling this method.
+
+The trusted store only takes effect when the next [tcpsock:sslhandshake](#tcpsocksslhandshake)
+call is made with `ssl_verify` set to `true`; with verification off, the store is ignored. The
+store is consumed once per handshake and is not retained across handshakes, so callers wishing to
+apply it to a subsequent handshake on the same cosocket must call this method again.
 
 [Back to TOC](#nginx-api-for-lua)
 
@@ -7955,7 +8450,10 @@ the remote.
 The optional `ssl_verify` argument takes a Lua boolean value to
 control whether to perform SSL verification. When set to `true`, the server
 certificate will be verified according to the CA certificates specified by
-the [lua_ssl_trusted_certificate](#lua_ssl_trusted_certificate) directive.
+the [lua_ssl_trusted_certificate](#lua_ssl_trusted_certificate) directive,
+or, if [tcpsock:settrustedstore](#tcpsocksettrustedstore) has been called on
+this cosocket, by the X509 store supplied there (which takes precedence for
+this handshake).
 You may also need to adjust the [lua_ssl_verify_depth](#lua_ssl_verify_depth)
 directive to control how deep we should follow along the certificate chain.
 Also, when the `ssl_verify` argument is true and the
@@ -7969,6 +8467,51 @@ For connections that have already done SSL/TLS handshake, this method returns
 immediately.
 
 This method was first introduced in the `v0.9.11` release.
+
+[Back to TOC](#nginx-api-for-lua)
+
+tcpsock:getsslpointer
+---------------------
+
+**syntax:** *sslpointer, err = tcpsock:getsslpointer()*
+
+**context:** *rewrite_by_lua&#42;, access_by_lua&#42;, content_by_lua&#42;, ngx.timer.&#42;, ssl_certificate_by_lua&#42;, ssl_session_fetch_by_lua&#42;, ssl_client_hello_by_lua&#42;*
+
+Retrieves the underlying SSL pointer (SSL_CTX structure) of the cosocket connection.
+
+This method provides access to the raw OpenSSL SSL pointer, which is useful when third-party modules or FFI code need to perform low-level SSL operations directly on the connection. This enables cross-module operations and advanced SSL manipulations that are not exposed through the standard cosocket API.
+
+On success, returns the SSL pointer as a light userdata that can be passed to C functions via FFI. On failure, returns `nil` and a string describing the error.
+
+[Back to TOC](#nginx-api-for-lua)
+
+tcpsock:getsslctx
+-----------------
+
+**syntax:** *sslctx, err = tcpsock:getsslctx()*
+
+**context:** *rewrite_by_lua&#42;, access_by_lua&#42;, content_by_lua&#42;, ngx.timer.&#42;, ssl_certificate_by_lua&#42;, ssl_session_fetch_by_lua&#42;, ssl_client_hello_by_lua&#42;*
+
+Retrieves the underlying SSL pointer (SSL_CTX structure) of the cosocket connection.
+
+This method provides access to the raw OpenSSL SSL pointer, which is useful when third-party modules or FFI code need to perform low-level SSL operations directly on the connection. This enables cross-module operations and advanced SSL manipulations that are not exposed through the standard cosocket API.
+
+On success, returns the SSL pointer as a light userdata that can be passed to C functions via FFI. On failure, returns `nil` and a string describing the error.
+
+[Back to TOC](#nginx-api-for-lua)
+
+tcpsock:getsslsession
+---------------------
+
+**syntax:** *session, err = tcpsock:getsslsession()*
+
+**context:** *rewrite_by_lua&#42;, access_by_lua&#42;, content_by_lua&#42;, ngx.timer.&#42;, ssl_certificate_by_lua&#42;, ssl_session_fetch_by_lua&#42;, ssl_client_hello_by_lua&#42;*
+
+Retrieves the SSL session object from the cosocket connection for session resumption purposes.
+
+While `tcpsock:sslhandshake()` also returns an SSL session, the server may not have sent the session resumption ticket to the client yet at that point, making the session non-reusable. By calling `getsslsession` after the request completes, you can obtain an SSL session that is more likely to be reusable for future connections. This session can then be passed to subsequent `sslhandshake()` calls to enable SSL session resumption, which reduces handshake overhead and improves connection performance.
+
+On success, returns the SSL session as a light userdata. On failure, returns `nil` and a string describing the error.
 
 [Back to TOC](#nginx-api-for-lua)
 
@@ -8500,9 +9043,9 @@ By default, the corresponding Nginx handler (e.g., [rewrite_by_lua](#rewrite_by_
 
 When the user "light thread" terminates with a Lua error, however, it will not abort other running "light threads" like the "entry thread" does.
 
-Due to the limitation in the Nginx subrequest model, it is not allowed to abort a running Nginx subrequest in general. So it is also prohibited to abort a running "light thread" that is pending on one ore more Nginx subrequests. You must call [ngx.thread.wait](#ngxthreadwait) to wait for those "light thread" to terminate before quitting the "world". A notable exception here is that you can abort pending subrequests by calling [ngx.exit](#ngxexit) with and only with the status code `ngx.ERROR` (-1), `408`, `444`, or `499`.
+Due to the limitation in the Nginx subrequest model, it is not allowed to abort a running Nginx subrequest in general. So it is also prohibited to abort a running "light thread" that is pending on one or more Nginx subrequests. You must call [ngx.thread.wait](#ngxthreadwait) to wait for those "light thread" to terminate before quitting the "world". A notable exception here is that you can abort pending subrequests by calling [ngx.exit](#ngxexit) with and only with the status code `ngx.ERROR` (-1), `408`, `444`, or `499`.
 
-The "light threads" are not scheduled in a pre-emptive way. In other words, no time-slicing is performed automatically. A "light thread" will keep running exclusively on the CPU until
+The "light threads" are not scheduled in a preemptive way. In other words, no time-slicing is performed automatically. A "light thread" will keep running exclusively on the CPU until
 
 1. a (nonblocking) I/O operation cannot be completed in a single run,
 1. it calls [coroutine.yield](#coroutineyield) to actively give up execution, or
@@ -8906,7 +9449,7 @@ this context.
 
 You must notice that each timer will be based on a fake request (this fake request is also based on a fake connection). Because Nginx's memory release is based on the connection closure, if you run a lot of APIs that apply for memory resources in a timer, such as [tcpsock:connect](#tcpsockconnect), will cause the accumulation of memory resources. So it is recommended to create a new timer after running several times to release memory resources.
 
-You can pass most of the standard Lua values (nils, booleans, numbers, strings, tables, closures, file handles, and etc) into the timer callback, either explicitly as user arguments or implicitly as upvalues for the callback closure. There are several exceptions, however: you *cannot* pass any thread objects returned by [coroutine.create](#coroutinecreate) and [ngx.thread.spawn](#ngxthreadspawn) or any cosocket objects returned by [ngx.socket.tcp](#ngxsockettcp), [ngx.socket.udp](#ngxsocketudp), and [ngx.req.socket](#ngxreqsocket) because these objects' lifetime is bound to the request context creating them while the timer callback is detached from the creating request's context (by design) and runs in its own (fake) request context. If you try to share the thread or cosocket objects across the boundary of the creating request, then you will get the "no co ctx found" error (for threads) or "bad request" (for cosockets). It is fine, however, to create all these objects inside your timer callback.
+You can pass most of the standard Lua values (nils, booleans, numbers, strings, tables, closures, file handles, etc.) into the timer callback, either explicitly as user arguments or implicitly as upvalues for the callback closure. There are several exceptions, however: you *cannot* pass any thread objects returned by [coroutine.create](#coroutinecreate) and [ngx.thread.spawn](#ngxthreadspawn) or any cosocket objects returned by [ngx.socket.tcp](#ngxsockettcp), [ngx.socket.udp](#ngxsocketudp), and [ngx.req.socket](#ngxreqsocket) because these objects' lifetime is bound to the request context creating them while the timer callback is detached from the creating request's context (by design) and runs in its own (fake) request context. If you try to share the thread or cosocket objects across the boundary of the creating request, then you will get the "no co ctx found" error (for threads) or "bad request" (for cosockets). It is fine, however, to create all these objects inside your timer callback.
 
 Please note that the timer Lua handler has its own copy of the `ngx.ctx` magic
 table. It won't share the same `ngx.ctx` with the Lua handler creating the timer.
@@ -9072,7 +9615,7 @@ This API was first introduced in the `0.9.5` release.
 [Back to TOC](#nginx-api-for-lua)
 
 ngx.worker.pids
---------------
+---------------
 
 **syntax:** *pids = ngx.worker.pids()*
 
@@ -9399,7 +9942,7 @@ The type of `args` must be one of type below:
 * nil
 * table (the table may be recursive, and contains members of types above.)
 
-The `ok` is in boolean type, which indicate the C land error (failed to get thread from thread pool, pcall the module function failed, .etc). If `ok` is `false`, the `res1` is the error string.
+The `ok` is in boolean type, which indicate the C land error (failed to get thread from thread pool, pcall the module function failed, etc.). If `ok` is `false`, the `res1` is the error string.
 
 The return values (res1, ...) are returned by invocation of the module function. Normally, the `res1` should be in boolean type, so that the caller could inspect the error.
 

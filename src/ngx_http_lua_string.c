@@ -96,7 +96,7 @@ ngx_http_lua_ngx_quote_sql_str(lua_State *L)
     *p++ = '\'';
 
     if (p != dst + dlen) {
-        return NGX_ERROR;
+        return luaL_error(L, "internal error: quote_sql_str buffer mismatch");
     }
 
     lua_pushlstring(L, (char *) dst, p - dst);
@@ -417,6 +417,26 @@ ngx_http_lua_ffi_decode_base64(const u_char *src, size_t slen, u_char *dst,
     out.data = dst;
 
     rc = ngx_decode_base64(&out, &in);
+
+    *dlen = out.len;
+
+    return rc == NGX_OK;
+}
+
+
+int
+ngx_http_lua_ffi_decode_base64mime(const u_char *src, size_t slen, u_char *dst,
+    size_t *dlen)
+{
+    ngx_int_t      rc;
+    ngx_str_t      in, out;
+
+    in.data = (u_char *) src;
+    in.len = slen;
+
+    out.data = dst;
+
+    rc = ngx_http_lua_decode_base64mime(&out, &in);
 
     *dlen = out.len;
 
